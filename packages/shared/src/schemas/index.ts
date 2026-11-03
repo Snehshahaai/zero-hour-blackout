@@ -80,3 +80,23 @@ export const lobbySnapshotSchema = z.object({
 });
 export type LobbyPlayerSnapshot = z.infer<typeof lobbyPlayerSnapshotSchema>;
 export type LobbySnapshot = z.infer<typeof lobbySnapshotSchema>;
+
+/** Per-tick player input (client -> server, ~60 Hz). Every field is validated server-side. */
+export const inputMessageSchema = z.object({
+  seq: z.number().int().min(0),
+  forward: z.number().int().min(-1).max(1),
+  right: z.number().int().min(-1).max(1),
+  jump: z.boolean(),
+  sprint: z.boolean(),
+  crouch: z.boolean(),
+  fire: z.boolean(),
+  reload: z.boolean(),
+  /** View angles in radians, WITHOUT weapon recoil (the server adds its own). */
+  yaw: z.number(),
+  pitch: z.number().min(-1.6).max(1.6),
+  /** Server time (ms) of the world state the shooter was looking at; used for lag compensation. */
+  renderTime: z.number(),
+});
+export type InputMessage = z.infer<typeof inputMessageSchema>;
+
+export const MATCH_TICK_RATE = 60;

@@ -8,6 +8,7 @@ import { SceneBackground } from './features/scene/SceneBackground.tsx';
 import { HomePage } from './pages/HomePage.tsx';
 import { ComingSoonPage } from './pages/PlaceholderPage.tsx';
 import { LobbyPage } from './pages/LobbyPage.tsx';
+import { MatchPage } from './pages/MatchPage.tsx';
 import { PlayPage } from './pages/PlayPage.tsx';
 import { SandboxPage } from './pages/SandboxPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
@@ -30,6 +31,16 @@ export function App() {
   }, [inLobby, net.status, route, navigate]);
 
   if (route === 'sandbox') return <SandboxPage onExit={() => navigate('home')} />;
+  // Once the server starts the match, the lobby screen is replaced by the game itself.
+  if (route === 'lobby' && net.lobby?.phase === 'inMatch') {
+    return (
+      <MatchPage
+        onLeave={() => {
+          void network.leave().then(() => navigate('play'));
+        }}
+      />
+    );
+  }
   return (
     <div className={`app${route === 'home' ? '' : ' app-dim'}`}>
       <SceneBackground active={route === 'home'} />

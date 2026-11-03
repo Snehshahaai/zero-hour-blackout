@@ -9,6 +9,14 @@ import {
   type RoomVisibility,
   type Team,
 } from '@zhb/shared';
+import type {
+  MatchNet,
+  MatchSnapshot,
+  NetHit,
+  NetKill,
+  NetPlayer,
+  NetShot,
+} from '@zhb/game-engine';
 import { SERVER_HTTP_URL } from './serverStatus.ts';
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting';
@@ -128,6 +136,40 @@ class Network {
       /* already closed */
     }
     this.leaving = false;
+  }
+
+  /** Adapter the in-match game uses to talk to the room. Null when not in a room. */
+  matchBridge(): MatchNet | null {
+    const room = this.room;
+    if (!room) return null;
+    const snapshot = (): MatchSnapshot => {
+      const raw = room.state.toJSON() as {
+        tick: number;
+        timeMs: number;
+        sim: Record<string, NetPlayer>;
+      };
+      return { tick: raw.tick, timeMs: raw.timeMs, players: raw.sim };
+    };
+    const sub = <T>(type: string, cb: (e: T) => void) => room.onMessage(type, cb);
+    return {
+      mySessionId: room.sessionId,
+      sendInput: (input) => room.send('input', input),
+      onSnapshot: (cb) => {
+        // Fire once per distinct server tick, not on every unrelated state change.
+        let lastTick = -1;
+        const handler = () => {
+          const snap = snapshot();
+          if (snap.tick === lastTick) return;
+          lastTick = snap.tick;
+          cb(snap);
+        };
+        room.onStateChange(handler);
+        return () => room.onStateChange.remove(handler);
+      },
+      onShot: (cb) => sub<NetShot>('shot', cb),
+      onHit: (cb) => sub<NetHit>('hit', cb),
+      onKill: (cb) => sub<NetKill>('kill', cb),
+    };
   }
 
   setTeam(team: Team): void {

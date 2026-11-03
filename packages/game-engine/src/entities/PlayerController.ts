@@ -81,6 +81,37 @@ export class PlayerController {
     world.step();
   }
 
+  /** Overwrite the simulation state (client reconciliation / server respawn). */
+  setState(
+    s: Pick<PlayerState, 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz' | 'grounded' | 'crouching'>,
+  ): void {
+    Object.assign(this.state, s);
+    this.setHeight(s.crouching ? crouchHeight : standHeight);
+    this.state.eyeHeight = s.crouching ? MOVEMENT.crouchEye : MOVEMENT.standEye;
+    this.coyote = s.grounded ? MOVEMENT.coyoteSeconds : 0;
+    this.jumpBuffer = 0;
+  }
+
+  /** Disabled controllers neither collide nor can be hit (used while dead). */
+  setEnabled(enabled: boolean): void {
+    this.collider.setEnabled(enabled);
+    this.physics.refreshQueries();
+  }
+
+  /** Current collider height in metres. */
+  get bodyHeight(): number {
+    return this.height;
+  }
+
+  /** Temporarily place the collider elsewhere (server lag compensation). Call `restoreBody` after. */
+  moveBodyTo(x: number, y: number, z: number): void {
+    this.body.setTranslation({ x, y: y + this.height / 2, z }, true);
+  }
+
+  restoreBody(): void {
+    this.syncBody();
+  }
+
   teleport(x: number, y: number, z: number): void {
     Object.assign(this.state, { x, y, z, vx: 0, vy: 0, vz: 0 });
     this.syncBody();

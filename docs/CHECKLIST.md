@@ -55,8 +55,20 @@
 - [ ] Not done (5b): in-match player sync, server-side movement/hit validation, prediction/interpolation. "Match started" currently only shows a message.
 - [ ] Not done: selectable loadout (only HX-27 exists), friends list/notifications, kick/ban, spectators, team-switch swap requests, persistence/accounts, public room browser.
 
+## Phase 5b: In-match synchronization — DONE (deathmatch-style, no round rules yet)
+
+- [x] Server `MatchSim` (60 Hz): runs the same `PlayerController`/`WeaponSim`/`Hitscan` as the client; server decides movement, hits, damage, deaths, respawns (3 s), scores. No friendly fire.
+- [x] Inputs (Zod-validated) are queued per player and consumed against a per-tick credit: bursts absorbed, idle = not simulated, speed capped at real time (flooding does nothing). Out-of-range fields kick the sender.
+- [x] Lag compensation: shots are resolved against targets rewound to the shooter's render time, capped at 250 ms
+- [x] State replication at 20 Hz (Colyseus schema): positions, velocity, health, ammo, reload, K/D, last-acked input
+- [x] Client: prediction + reconciliation (rewind/replay only when error > 4 cm), 110 ms snapshot interpolation of remote players, server-driven HUD/hit markers/killfeed/scoreboard (Tab), tracers/impacts/sounds from server `shot` events
+- [x] Reconnect during a match keeps the player's slot; 32 server tests (sim logic without network + real-server flows); verified with two real browsers (match entry, movement with 0 corrections, server-owned ammo/reload, remote player present)
+- [ ] Not done: round/bomb/objective rules, team scoring and match end (Phase 6) — the match currently never ends
+- [ ] Not done: positional audio (only distance-scaled volume), remote player animation/models (capsules), clock-sync refinement/ping display, bandwidth measurements, interest management, load test, server tick-rate degradation handling, anti-cheat beyond input validation (aim is client-reported; server adds its own recoil/spread)
+- Known: each `PlayerController.update` steps the whole Rapier world, so server cost grows with player count x 60 Hz; fine for 1v1/2v2, must be measured/optimised before 5v5. Local physics has no other players, so bumping into one causes a (corrected) misprediction.
+
 ## Not implemented yet
 
-Everything else: in-match sync (P5b), competitive rules (P6), power grid/audio (P7), co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
+Everything else: competitive rules (P6), power grid/audio (P7), co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
 
-## Next: Phase 5b — In-match synchronization
+## Next: Phase 6 — Competitive rules (rounds, bomb, scoring)

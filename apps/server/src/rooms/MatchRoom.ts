@@ -2,7 +2,10 @@ import { randomInt } from 'node:crypto';
 import { CloseCode, matchMaker, Room, ServerError, validate, type Client } from '@colyseus/core';
 import {
   MATCH_START_COUNTDOWN_SECONDS,
+  MATCH_TICK_RATE,
   RECONNECT_GRACE_SECONDS,
+  inputMessageSchema,
+  type Team,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
   createRoomOptionsSchema,
@@ -21,7 +24,9 @@ import {
   roomCapacity,
   uniqueName,
 } from './lobbyRules.ts';
-import { LobbyState, PlayerSchema } from './schema.ts';
+import { MAP_01, initPhysics } from '@zhb/game-engine/sim';
+import { MatchSim, type SimEvent } from '../sim/MatchSim.ts';
+import { LobbyState, PlayerSchema, SimPlayerSchema } from './schema.ts';
 
 interface Metadata {
   roomCode: string;
@@ -45,6 +50,9 @@ function randomCode(): string {
 export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   override state = new LobbyState();
   private readonly limiter = new RateLimiter();
+  /** Inputs arrive at ~60 Hz per client, so they get their own, much larger budget. */
+  private readonly inputLimiter = new RateLimiter(120, 140);
+  private sim: MatchSim | null = null;
   private joinCounter = 0;
   private countdownTimer: { clear(): void } | null = null;
 
@@ -98,8 +106,10 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     // immediately. Only genuine connection drops get the reconnection grace period.
     const dropped = code !== CloseCode.CONSENTED && code !== CloseCode.WITH_ERROR;
 
-    if (dropped && this.state.phase !== 'inMatch') {
+    if (dropped) {
       player.connected = false;
+      const simPlayer = this.sim?.players.get(client.sessionId);
+      if (simPlayer) simPlayer.queue.length = 0;
       this.cancelCountdown(); // a missing player invalidates a pending start
       try {
         const rejoined = await this.allowReconnection(client, RECONNECT_GRACE_SECONDS);
@@ -116,6 +126,8 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
 
   override onDispose(): void {
     this.countdownTimer?.clear();
+    this.sim?.dispose();
+    this.sim = null;
   }
 
   override messages = {
@@ -141,6 +153,11 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       player.ready = msg.ready;
     }),
 
+    input: validate(inputMessageSchema, (client, msg) => {
+      if (!this.sim || !this.inputLimiter.allow(client.sessionId)) return;
+      this.sim.queueInput(client.sessionId, msg);
+    }),
+
     start: validate(lobbyMessageSchemas.start, (client) => {
       if (!this.guard(client)) return;
       if (this.state.phase !== 'lobby') return;
@@ -149,6 +166,64 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       this.beginCountdown();
     }),
   };
+
+  /** Starts the authoritative simulation for everyone currently in the lobby. */
+  private async startMatch(): Promise<void> {
+    await initPhysics();
+    if (this.sim || this.state.phase !== 'inMatch') return;
+    const sim = new MatchSim(MAP_01, (e) => this.onSimEvent(e));
+    for (const p of this.state.players.values()) {
+      sim.addPlayer(p.id, p.name, p.team as Team);
+      this.state.sim.set(p.id, new SimPlayerSchema());
+    }
+    this.sim = sim;
+    this.patchRate = 50; // 20 Hz state broadcast; the sim itself ticks at 60 Hz
+    this.setSimulationInterval(() => this.stepSim(), 1000 / MATCH_TICK_RATE);
+  }
+
+  private stepSim(): void {
+    const sim = this.sim;
+    if (!sim) return;
+    sim.step();
+    this.state.tick = sim.tick;
+    this.state.timeMs = sim.timeMs;
+    for (const sp of sim.players.values()) {
+      const view = this.state.sim.get(sp.id);
+      if (!view) continue;
+      const st = sp.controller.state;
+      view.id = sp.id;
+      view.name = sp.name;
+      view.team = sp.team;
+      view.x = st.x;
+      view.y = st.y;
+      view.z = st.z;
+      view.vx = st.vx;
+      view.vy = st.vy;
+      view.vz = st.vz;
+      view.yaw = sp.yaw;
+      view.pitch = sp.pitch;
+      view.grounded = st.grounded;
+      view.crouching = st.crouching;
+      view.alive = sp.alive;
+      view.health = sp.health.current;
+      view.ammo = sp.weapon.ammo;
+      view.reserve = sp.weapon.reserve;
+      view.reloading = sp.weapon.reloading;
+      view.kills = sp.kills;
+      view.deaths = sp.deaths;
+      view.ackSeq = sp.ackSeq;
+    }
+  }
+
+  private onSimEvent(e: SimEvent): void {
+    if (e.type === 'shot') this.broadcast('shot', e);
+    else if (e.type === 'kill') this.broadcast('kill', e);
+    else {
+      // Damage feedback goes to the shooter only.
+      const shooter = this.clients.find((c) => c.sessionId === e.shooter);
+      shooter?.send('hit', e);
+    }
+  }
 
   /** Rate limit + membership check shared by every message handler. */
   private guard(client: Client): boolean {
@@ -166,7 +241,10 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
 
   private removePlayer(id: string): void {
     this.state.players.delete(id);
+    this.state.sim.delete(id);
+    this.sim?.removePlayer(id);
     this.limiter.forget(id);
+    this.inputLimiter.forget(id);
     this.cancelCountdown();
     if (this.state.hostId === id) {
       this.state.hostId = pickHost(this.state.players.values()) ?? '';
@@ -183,6 +261,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
         this.countdownTimer?.clear();
         this.countdownTimer = null;
         this.state.phase = 'inMatch';
+        void this.startMatch();
       }
     }, 1000);
   }

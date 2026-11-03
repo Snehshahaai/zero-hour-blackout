@@ -204,4 +204,65 @@ describe('MatchRoom (end-to-end)', () => {
     );
     expect(c.roomId).not.toBe(a.roomId);
   });
+
+  it('match: sim state replicates, inputs move the player and are acknowledged', async () => {
+    const host = await create('Host', { format: '1v1' });
+    const guest = await joinCode(host.roomId, 'Guest');
+    await until(() => players(host).length === 2, 'joined');
+    guest.send('setReady', { ready: true });
+    await until(() => playerOf(host, guest.sessionId).ready, 'ready');
+    host.send('start', {});
+    await until(() => host.state.phase === 'inMatch', 'inMatch', 7000);
+    await until(() => host.state.sim.size === 2 && host.state.tick > 5, 'sim state replicating');
+
+    const mine = () => host.state.sim.get(host.sessionId);
+    const startX = mine().x;
+    const t0 = host.state.tick;
+    // Host is on the attackers' side: spawn yaw faces +X (east). Walk 30 ticks.
+    for (let i = 0; i < 30; i++) {
+      host.send('input', {
+        seq: i,
+        forward: 1,
+        right: 0,
+        jump: false,
+        sprint: false,
+        crouch: false,
+        fire: false,
+        reload: false,
+        yaw: -Math.PI / 2,
+        pitch: 0,
+        renderTime: host.state.timeMs,
+      });
+      await new Promise((r) => setTimeout(r, 16));
+    }
+    await until(() => mine().ackSeq >= 25, 'inputs acknowledged');
+    expect(mine().x).toBeGreaterThan(startX + 0.8);
+    expect(host.state.tick).toBeGreaterThan(t0);
+    // The other player is replicated too, with their own health/ammo.
+    expect(host.state.sim.get(guest.sessionId).health).toBe(100);
+  }, 20000);
+
+  it('match: an input with an out-of-range field kicks the sender', async () => {
+    const host = await create('Host', { format: '1v1' });
+    const guest = await joinCode(host.roomId, 'Guest');
+    await until(() => players(host).length === 2, 'joined');
+    guest.send('setReady', { ready: true });
+    await until(() => playerOf(host, guest.sessionId).ready, 'ready');
+    host.send('start', {});
+    await until(() => host.state.phase === 'inMatch' && host.state.sim.size === 2, 'match', 7000);
+    guest.send('input', {
+      seq: 0,
+      forward: 50,
+      right: 0,
+      jump: false,
+      sprint: false,
+      crouch: false,
+      fire: false,
+      reload: false,
+      yaw: 0,
+      pitch: 0,
+      renderTime: 0,
+    });
+    await until(() => players(host).length === 1, 'cheater removed');
+  }, 20000);
 });

@@ -48,3 +48,11 @@
 - The SDK does not auto-reconnect on every close code. The web client stores `room.reconnectionToken` in sessionStorage and retries `client.reconnect()` with backoff; `network.resume()` runs at startup for page refreshes.
 - The UI never reads the Colyseus room: `services/network.ts` publishes validated immutable snapshots (`lobbySnapshotSchema`) consumed via `useSyncExternalStore`.
 - Test gotcha: Playwright `button:has-text("Join")` matches any button containing that substring ("Join an open 1v1 lobby...") — use exact role/name selectors.
+
+## In-match networking notes (Phase 5b)
+
+- `@zhb/game-engine/sim` is the DOM-free entry the server imports; anything reachable from it must not touch Three.js or `window`.
+- Model: client sends one input per fixed tick (seq, keys, view angles WITHOUT recoil, renderTime). Server applies inputs with a credit system (see `MatchSim.stepPlayer`), runs its own weapon sim (own recoil + seeded spread), resolves hits with lag compensation, replicates state; client reconciles by rewind/replay.
+- A first version repeated the last input when the queue was empty; under bursty clients this made the server run ahead (22 corrections / 2.5 s). Not simulating starved players fixed it (0 corrections).
+- Interpolation clock: `serverOffset = snapshot.timeMs - performance.now()` (smoothed); remote players render at `serverNow - 110 ms`; the same value is sent as `renderTime` so rewind matches what the shooter saw.
+- Cheating surface still open: view angles are client-reported (aimbots), movement is validated only by running the same simulation (no speed hack, but teleports are impossible too because only inputs are accepted), no bandwidth/abuse limits beyond the input rate limiter.

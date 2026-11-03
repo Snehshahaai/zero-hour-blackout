@@ -12,6 +12,7 @@
     "@colyseus/core": "^0.18.25",
     "@colyseus/schema": "^5.0.43",
     "@colyseus/ws-transport": "^0.18.4",
+    "@zhb/game-engine": "^0.1.0",
     "@zhb/shared": "*",
     "zod": "^4.6.7"
   },
