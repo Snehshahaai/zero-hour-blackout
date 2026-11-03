@@ -71,7 +71,7 @@ export function canStart(
   const present = all.filter((p) => p.connected);
   if (mode === 'cooperative' || fillBots) {
     // Cooperative, or competitive against bots that fill the empty slots: no team-balance rule.
-    if (present.length === 0) return fail('need_players', 'No operators present.');
+    if (present.length === 0) return fail('need_players', 'You need at least 1 player to start.');
     if (present.some((p) => p.id !== hostId && !p.ready))
       return fail('not_ready', 'Waiting for all operators to be ready.');
     if (present.length !== all.length)
