@@ -1,9 +1,11 @@
 import {
+  COOP_OBJECTIVES,
   POWER_RULES,
   ROUND_RULES,
   type BombState,
   type GraphicsQuality,
   type InputMessage,
+  type MissionState,
   type RoundPhase,
   type Team,
   type Weather as WeatherKind,
@@ -43,6 +45,7 @@ export interface NetPlayer {
   id: string;
   name: string;
   team: Team;
+  isBot: boolean;
   side: Team;
   interactProgress: number;
   x: number;
@@ -95,6 +98,22 @@ export interface NetBombEvent {
   site: string;
 }
 
+export interface MissionInfo {
+  state: MissionState;
+  objectiveIndex: number;
+  label: string;
+  /** 0..1 progress of a hold objective. */
+  progress: number;
+  timeLeft: number;
+  hostiles: number;
+}
+
+export type NetMissionEvent =
+  | { event: 'started' }
+  | { event: 'objective'; index: number; label: string }
+  | { event: 'complete' }
+  | { event: 'failed'; reason: 'wiped' | 'time' };
+
 export interface NetPowerState {
   cut: boolean;
   secondsLeft: number;
@@ -108,6 +127,8 @@ export interface NetPowerEvent {
 
 export interface MatchSnapshot {
   tick: number;
+  mode: 'competitive' | 'cooperative';
+  mission: MissionInfo;
   power: Record<string, NetPowerState>;
   doors: Record<string, { closed: boolean }>;
   weather: WeatherKind;
@@ -146,6 +167,7 @@ export interface MatchNet {
   onRound(cb: (e: NetRoundEvent) => void): () => void;
   onBomb(cb: (e: NetBombEvent) => void): () => void;
   onPower(cb: (e: NetPowerEvent) => void): () => void;
+  onMission(cb: (e: NetMissionEvent) => void): () => void;
 }
 
 export interface ScoreRow {
@@ -180,6 +202,16 @@ export interface MatchHud {
   teammates: { name: string; health: number; alive: boolean }[];
   /** Set once the match is decided. */
   result: { won: boolean; reason: string } | null;
+  /** Present in cooperative missions. */
+  coop: {
+    state: MissionState;
+    objective: string;
+    index: number;
+    total: number;
+    progress: number;
+    timeLeft: number;
+    hostiles: number;
+  } | null;
   weather: WeatherKind;
   /** Active outage, if any. */
   power: { label: string; secondsLeft: number } | null;
@@ -325,6 +357,7 @@ export async function createMatchGame(
     result: null,
     weather: 'clear',
     power: null,
+    coop: null,
   };
   const snapshotHud = (): MatchHud => ({
     ...hud,
@@ -334,6 +367,7 @@ export async function createMatchGame(
     round: { ...hud.round },
     bomb: { ...hud.bomb },
     power: hud.power ? { ...hud.power } : null,
+    coop: hud.coop ? { ...hud.coop } : null,
   });
   const emitHud = () => {
     const snap = snapshotHud();
@@ -354,7 +388,10 @@ export async function createMatchGame(
   });
 
   const makeRemote = (p: NetPlayer): Remote => {
-    const mat = new MeshStandardMaterial({ color: TEAM_COLOR[p.team], roughness: 0.7 });
+    const mat = new MeshStandardMaterial({
+      color: p.isBot ? 0xb23a3a : TEAM_COLOR[p.team],
+      roughness: 0.7,
+    });
     const group = new Group();
     group.name = p.name;
     const body = new Mesh(bodyGeo, mat);
@@ -406,7 +443,8 @@ export async function createMatchGame(
     applyEnvironment(snap);
     const me = snap.players[net.mySessionId];
     const ri = snap.round;
-    roundPhase = ri.phase;
+    const coop = snap.mode === 'cooperative';
+    roundPhase = coop ? (snap.mission.state === 'active' ? 'live' : 'freeze') : ri.phase;
     bombSite = ri.bombState === 'planted' ? ri.bombSite : '';
     bombTimeLeft = ri.bombState === 'planted' ? ri.timeLeft : 0;
     if (me) {
@@ -417,16 +455,31 @@ export async function createMatchGame(
       hud.round = { phase: ri.phase, number: ri.number, timeLeft: ri.timeLeft, mine, theirs };
       hud.bomb = { planted: ri.bombState === 'planted', site: ri.bombSite };
       hud.progress = me.interactProgress;
-      hud.result = ri.matchWinner
+      hud.result = coop
+        ? snap.mission.state === 'complete' || snap.mission.state === 'failed'
+          ? { won: snap.mission.state === 'complete', reason: 'Mission' }
+          : null
+        : ri.matchWinner
+          ? {
+              won: ri.matchWinner === me.team,
+              reason: ri.phase === 'matchEnd' ? 'Match complete' : '',
+            }
+          : null;
+      hud.coop = coop
         ? {
-            won: ri.matchWinner === me.team,
-            reason: ri.phase === 'matchEnd' ? 'Match complete' : '',
+            state: snap.mission.state,
+            objective: snap.mission.label,
+            index: snap.mission.objectiveIndex,
+            total: COOP_OBJECTIVES.length,
+            progress: snap.mission.progress,
+            timeLeft: snap.mission.timeLeft,
+            hostiles: snap.mission.hostiles,
           }
         : null;
       hud.teammates = Object.values(snap.players)
-        .filter((p) => p.team === me.team && p.id !== me.id)
+        .filter((p) => !p.isBot && p.team === me.team && p.id !== me.id)
         .map((p) => ({ name: p.name, health: p.health, alive: p.alive }));
-      hud.prompt = computePrompt(me, ri);
+      hud.prompt = coop ? null : computePrompt(me, ri);
       hud.weather = snap.weather;
       hud.ammo = me.ammo;
       hud.reserve = me.reserve;
@@ -435,6 +488,7 @@ export async function createMatchGame(
       hud.alive = me.alive;
     }
     hud.scores = Object.values(snap.players)
+      .filter((p) => !p.isBot)
       .map((p) => ({
         id: p.id,
         name: p.name,
@@ -595,6 +649,14 @@ export async function createMatchGame(
       }[e.reason];
       pushFeed(`${mine ? 'Your team' : 'Enemy team'} won the round ${why}`);
     } else if (e.type === 'halftime') pushFeed('Sides have swapped');
+  });
+  const offMission = net.onMission((e) => {
+    if (e.event === 'objective') pushFeed(`Objective: ${e.label}`);
+    else if (e.event === 'complete') pushFeed('Mission complete');
+    else if (e.event === 'failed')
+      pushFeed(
+        e.reason === 'time' ? 'Mission failed: out of time' : 'Mission failed: all operators down',
+      );
   });
   const offBomb = net.onBomb((e) => {
     if (e.event === 'exploded') audio.play('explosion', 1);
@@ -934,6 +996,7 @@ export async function createMatchGame(
       offKill();
       offRound();
       offBomb();
+      offMission();
       offPower();
       weather.dispose();
       removeBomb();

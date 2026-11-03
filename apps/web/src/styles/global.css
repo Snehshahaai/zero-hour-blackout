@@ -1005,3 +1005,29 @@ input[aria-invalid='true'] {
     animation: none;
   }
 }
+
+.coop-box {
+  margin-top: 28px;
+  padding: 18px;
+  max-width: 520px;
+  background: rgb(18 22 26 / 0.85);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  display: grid;
+  gap: 8px;
+}
+.coop-box h3 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.mission-objective {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  max-width: 360px;
+}
+.mission-bar {
+  width: 260px;
+  margin: 2px auto;
+}

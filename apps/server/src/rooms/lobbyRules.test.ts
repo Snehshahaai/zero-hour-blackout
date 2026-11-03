@@ -5,6 +5,7 @@ import {
   pickHost,
   pickTeamForJoin,
   RateLimiter,
+  roomCapacity,
   uniqueName,
   type LobbyPlayerLike,
 } from './lobbyRules.ts';
@@ -102,5 +103,38 @@ describe('host, names, rate limiting', () => {
     expect(rl.allow('b')).toBe(true); // other clients unaffected
     t += 1000;
     expect(rl.allow('a')).toBe(true);
+  });
+});
+
+describe('cooperative lobby rules', () => {
+  it('everyone joins the single operators team, up to four', () => {
+    const four = [P('attackers'), P('attackers'), P('attackers')];
+    expect(pickTeamForJoin([], '1v1', 'cooperative')).toBe('attackers');
+    expect(pickTeamForJoin(four, '1v1', 'cooperative')).toBe('attackers');
+    expect(pickTeamForJoin([...four, P('attackers')], '1v1', 'cooperative')).toBeNull();
+    expect(roomCapacity('1v1', 'cooperative')).toBe(4);
+    expect(roomCapacity('2v2', 'competitive')).toBe(4);
+    expect(roomCapacity('1v1', 'competitive')).toBe(2);
+  });
+
+  it('team switching is disabled', () => {
+    const me = P('attackers');
+    expect(canSwitchTeam([me], me, 'defenders', '1v1', 'cooperative')).toMatchObject({
+      code: 'coop_team',
+    });
+  });
+
+  it('a solo host can start; otherwise everyone else must be ready; no team-balance rule', () => {
+    const host = P('attackers');
+    expect(canStart([host], host.id, host.id, 'cooperative')).toEqual({ ok: true });
+    const a = P('attackers', { ready: false });
+    expect(canStart([host, a], host.id, host.id, 'cooperative')).toMatchObject({
+      code: 'not_ready',
+    });
+    a.ready = true;
+    expect(canStart([host, a], host.id, host.id, 'cooperative')).toEqual({ ok: true });
+    expect(canStart([host, a], host.id, a.id, 'cooperative')).toMatchObject({ code: 'not_host' });
+    const away = P('attackers', { ready: true, connected: false });
+    expect(canStart([host, a, away], host.id, host.id, 'cooperative')).toMatchObject({ ok: false });
   });
 });

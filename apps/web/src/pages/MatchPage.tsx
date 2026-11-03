@@ -230,7 +230,38 @@ function clock(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+function MissionBar({ hud }: { hud: MatchHud }) {
+  const c = hud.coop;
+  if (!c) return null;
+  const briefing = c.state === 'briefing';
+  return (
+    <div className="roundbar" role="status">
+      <div className="roundbar-score">
+        <span className="score-theirs" title="Hostiles remaining">
+          {c.hostiles}
+        </span>
+        <span className="roundbar-clock">{clock(c.timeLeft)}</span>
+      </div>
+      <div className="roundbar-phase">
+        {briefing ? 'BRIEFING · GET READY' : `OBJECTIVE ${c.index + 1}/${c.total}`}
+      </div>
+      <div className="mission-objective">{c.objective}</div>
+      {c.index > 0 && c.state === 'active' && (
+        <span className="prompt-bar mission-bar">
+          <span style={{ width: `${Math.round(c.progress * 100)}%` }} />
+        </span>
+      )}
+      <div className="roundbar-meta">
+        {c.index === 0
+          ? 'HOSTILES REMAINING (LEFT)'
+          : 'STAY IN THE ZONE · KEEP IT CLEAR OF HOSTILES'}
+      </div>
+    </div>
+  );
+}
+
 function RoundBar({ hud }: { hud: MatchHud }) {
+  if (hud.coop) return <MissionBar hud={hud} />;
   const { round, mySide, bomb } = hud;
   return (
     <div className="roundbar" role="status">
@@ -263,11 +294,15 @@ function MatchResult({ hud }: { hud: MatchHud }) {
   if (!result) return null;
   return (
     <div className="result" role="alertdialog" aria-label="Match result">
-      <p className="eyebrow">MATCH COMPLETE</p>
-      <h2 className={result.won ? 'is-win' : 'is-loss'}>{result.won ? 'Victory' : 'Defeat'}</h2>
-      <p className="result-score">
-        {hud.round.mine} – {hud.round.theirs}
-      </p>
+      <p className="eyebrow">{hud.coop ? 'MISSION' : 'MATCH COMPLETE'}</p>
+      <h2 className={result.won ? 'is-win' : 'is-loss'}>
+        {hud.coop ? (result.won ? 'Complete' : 'Failed') : result.won ? 'Victory' : 'Defeat'}
+      </h2>
+      {!hud.coop && (
+        <p className="result-score">
+          {hud.round.mine} – {hud.round.theirs}
+        </p>
+      )}
       <p className="note">Returning to the lobby…</p>
     </div>
   );

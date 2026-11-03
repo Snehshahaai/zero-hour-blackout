@@ -1,7 +1,7 @@
 import { defineRoom, defineServer, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { MATCH_ROOM_NAME } from '@zhb/shared';
-import type { PowerRules, RoundRules, Weather } from '@zhb/shared';
+import type { CoopRules, PowerRules, RoundRules, Weather } from '@zhb/shared';
 import type { ServerConfig } from './config.ts';
 import { MatchRoom } from './rooms/MatchRoom.ts';
 import { createRoutes } from './routes.ts';
@@ -11,11 +11,13 @@ export function createGameServer(
   options: {
     roundRules?: Partial<RoundRules>;
     powerRules?: Partial<PowerRules>;
+    coopRules?: Partial<CoopRules>;
     weather?: Weather;
   } = {},
 ) {
   MatchRoom.roundRules = options.roundRules ?? {};
   MatchRoom.powerRules = options.powerRules ?? {};
+  MatchRoom.coopRules = options.coopRules ?? {};
   MatchRoom.weatherOverride = options.weather ?? null;
   // Colyseus defaults to `Access-Control-Allow-Origin: <any origin>`. Restrict it to our web origins.
   matchMaker.controller.getCorsHeaders = (headers) => {

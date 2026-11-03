@@ -5,6 +5,7 @@ import {
   MATCH_TICK_RATE,
   RECONNECT_GRACE_SECONDS,
   inputMessageSchema,
+  type CoopRules,
   type PowerRules,
   type RoundRules,
   type Weather,
@@ -29,6 +30,7 @@ import {
 } from './lobbyRules.ts';
 import { MAP_01, initPhysics } from '@zhb/game-engine/sim';
 import { MatchSim, type SimEvent } from '../sim/MatchSim.ts';
+import { CoopMission, type MissionEvent } from '../sim/CoopMission.ts';
 import { PowerGrid, type PowerEvent } from '../sim/PowerGrid.ts';
 import { RoundManager, type RoundEvent } from '../sim/RoundManager.ts';
 import {
@@ -72,11 +74,13 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   /** Server-side round timing; set by `createGameServer` (tests use short rounds). Never client-controlled. */
   static roundRules: Partial<RoundRules> = {};
   static powerRules: Partial<PowerRules> = {};
+  static coopRules: Partial<CoopRules> = {};
   /** Forces the weather (tests/ops). Unset = random per match, decided by the server. */
   static weatherOverride: Weather | null = null;
   private sim: MatchSim | null = null;
   private rounds: RoundManager | null = null;
   private power: PowerGrid | null = null;
+  private coop: CoopMission | null = null;
   private joinCounter = 0;
   private countdownTimer: { clear(): void } | null = null;
 
@@ -93,7 +97,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       throw new ServerError(4001, 'Could not allocate a room code');
     this.roomId = code;
 
-    this.maxClients = roomCapacity(format);
+    this.maxClients = roomCapacity(format, mode);
     this.state.roomCode = code;
     this.state.format = format;
     this.state.mode = mode;
@@ -110,7 +114,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   override onJoin(client: Client, _options: unknown, auth?: { playerName: string }): void {
     if (this.state.phase !== 'lobby') throw new ServerError(4003, 'Match already started');
     const format = this.state.format as MatchFormat;
-    const team = pickTeamForJoin(this.state.players.values(), format);
+    const team = pickTeamForJoin(this.state.players.values(), format, this.state.mode as GameMode);
     if (!team) throw new ServerError(4004, 'Room is full');
 
     const names = [...this.state.players.values()].map((p) => p.name);
@@ -154,6 +158,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.sim = null;
     this.rounds = null;
     this.power = null;
+    this.coop = null;
   }
 
   override messages = {
@@ -166,6 +171,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
         player,
         msg.team,
         this.state.format as MatchFormat,
+        this.state.mode as GameMode,
       );
       if (!result.ok) return this.reject(client, result.code, result.message);
       player.team = msg.team;
@@ -187,7 +193,12 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     start: validate(lobbyMessageSchemas.start, (client) => {
       if (!this.guard(client)) return;
       if (this.state.phase !== 'lobby') return;
-      const result = canStart(this.state.players.values(), this.state.hostId, client.sessionId);
+      const result = canStart(
+        this.state.players.values(),
+        this.state.hostId,
+        client.sessionId,
+        this.state.mode as GameMode,
+      );
       if (!result.ok) return this.reject(client, result.code, result.message);
       this.beginCountdown();
     }),
@@ -203,12 +214,22 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       this.state.sim.set(p.id, new SimPlayerSchema());
     }
     this.sim = sim;
-    this.power = new PowerGrid(sim, MAP_01, (e) => this.onPowerEvent(e), MatchRoom.powerRules);
-    for (const panel of MAP_01.panels) this.state.power.set(panel.zone, new ZonePowerSchema());
-    for (const door of MAP_01.doors) this.state.doors.set(door.id, new DoorSchema());
     this.state.weather = MatchRoom.weatherOverride ?? pickWeather();
-    this.rounds = new RoundManager(sim, MAP_01, (e) => this.onRoundEvent(e), MatchRoom.roundRules);
-    this.rounds.start();
+    if (this.state.mode === 'cooperative') {
+      this.coop = new CoopMission(sim, MAP_01, (e) => this.onMissionEvent(e), MatchRoom.coopRules);
+      this.coop.start();
+    } else {
+      this.power = new PowerGrid(sim, MAP_01, (e) => this.onPowerEvent(e), MatchRoom.powerRules);
+      for (const panel of MAP_01.panels) this.state.power.set(panel.zone, new ZonePowerSchema());
+      for (const door of MAP_01.doors) this.state.doors.set(door.id, new DoorSchema());
+      this.rounds = new RoundManager(
+        sim,
+        MAP_01,
+        (e) => this.onRoundEvent(e),
+        MatchRoom.roundRules,
+      );
+      this.rounds.start();
+    }
     this.patchRate = 50; // 20 Hz state broadcast; the sim itself ticks at 60 Hz
     this.setSimulationInterval(() => this.stepSim(), 1000 / MATCH_TICK_RATE);
   }
@@ -218,6 +239,24 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     if (!sim) return;
     sim.step();
     this.rounds?.step();
+    if (this.sim !== sim) return; // the round manager ended the match and reset the room
+    const m = this.coop;
+    if (m) {
+      m.step();
+      if (this.sim !== sim) return; // the mission just finished and reset the room
+      this.state.missionState = m.state;
+      this.state.objectiveIndex = m.objective;
+      this.state.objectiveLabel = m.label;
+      this.state.objectiveProgress = Math.round(m.progress * 100) / 100;
+      this.state.missionTimeLeft = Math.max(0, Math.round(m.timeLeft));
+      this.state.hostilesAlive = m.hostilesAlive;
+    }
+    // Bots come and go during a mission: keep the replicated player map in step with the sim.
+    for (const id of [...this.state.sim.keys()])
+      if (!sim.players.has(id)) this.state.sim.delete(id);
+    for (const id of sim.players.keys()) {
+      if (!this.state.sim.has(id)) this.state.sim.set(id, new SimPlayerSchema());
+    }
     const r = this.rounds;
     if (this.power && r) {
       this.power.step(r.phase === 'live' || r.phase === 'planted');
@@ -253,6 +292,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       view.id = sp.id;
       view.name = sp.name;
       view.team = sp.team;
+      view.isBot = sp.isBot;
       view.side = sp.side;
       view.interactProgress = Math.round(sp.interactProgress * 100) / 100;
       view.x = st.x;
@@ -285,6 +325,14 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.broadcast(e.type === 'bomb' ? 'bomb' : 'round', e);
   }
 
+  private onMissionEvent(e: MissionEvent): void {
+    if (e.type === 'finished') {
+      this.resetToLobby();
+      return;
+    }
+    this.broadcast('mission', e);
+  }
+
   private onPowerEvent(e: PowerEvent): void {
     if (e.type === 'power') this.broadcast('power', e);
   }
@@ -295,6 +343,13 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.sim = null;
     this.rounds = null;
     this.power = null;
+    this.coop = null;
+    this.state.missionState = 'briefing';
+    this.state.objectiveIndex = 0;
+    this.state.objectiveLabel = '';
+    this.state.objectiveProgress = 0;
+    this.state.missionTimeLeft = 0;
+    this.state.hostilesAlive = 0;
     this.state.sim.clear();
     this.state.power.clear();
     this.state.doors.clear();

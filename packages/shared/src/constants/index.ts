@@ -59,3 +59,27 @@ export const POWER_RULES = {
   doorClearance: 1.2,
 } as const;
 export type PowerRules = { -readonly [K in keyof typeof POWER_RULES]: number };
+
+/** Cooperative mission "Secure the Facility" tuning. */
+export const COOP_RULES = {
+  /** Players per cooperative lobby. */
+  maxOperators: 4,
+  briefingSeconds: 4,
+  timeLimitSeconds: 600,
+  /** Seconds a site must be held (uncontested) to secure it. */
+  holdSeconds: 6,
+  /** A site counts as contested if a hostile is within (site radius + this). */
+  contestBonus: 4,
+  /** Operators hold within (site radius + this). */
+  holdBonus: 1.5,
+  resultSeconds: 8,
+  wave1: 4,
+  wave2: 2,
+  wave3: 3,
+} as const;
+export type CoopRules = { -readonly [K in keyof typeof COOP_RULES]: number };
+export const COOP_OBJECTIVES = [
+  'Eliminate the hostile patrols',
+  'Secure the generator room',
+  'Secure the loading dock',
+] as const;

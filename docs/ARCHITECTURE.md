@@ -72,3 +72,10 @@
 - Bug class to remember: Colyseus `toJSON()` omits empty maps, so any new replicated map is `undefined` on the client until populated. The web bridge defaults them; the first browser run caught this, unit tests did not.
 - A client that stops sending inputs must not keep holding keys: `MatchSim` expires `interact` after 12 ticks without input.
 - Test hygiene: `pkill -f` matches the calling shell if the command text contains the pattern, and `npx` leaves a child process behind; kill test servers in their own call and verify the port is free, otherwise a stale server from an earlier phase answers.
+
+## Cooperative & AI notes (Phase 8)
+
+- Bots are not a special case of the simulation: they are `SimPlayer`s fed by `BotBrain` through `queueInput`, so any change to movement/weapons applies to them automatically and they cannot cheat (no extra speed, no perfect aim, no free vision).
+- Nav edges come from `PhysicsWorld.segmentClear` (three parallel knee-height rays) at graph-build time, so hand-placed nodes are the only thing that can be wrong; the nav tests catch bad nodes (two were found: inside pipes and next to a crate).
+- `MatchRoom` picks `RoundManager`+`PowerGrid` (competitive) or `CoopMission` (cooperative) at match start; both end by emitting `finished`, which resets the room to the lobby. Anything that emits from inside `stepSim` must stop the tick if the sim was torn down (a regression found by the lifecycle test).
+- Replicated `sim` players now include bots (`isBot`); clients exclude them from the scoreboard/teammates and tint them hostile. Dead bots are removed from the sim after 3 s.

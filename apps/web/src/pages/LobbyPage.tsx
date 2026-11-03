@@ -1,4 +1,10 @@
-import { TEAM_SIZES, type LobbyPlayerSnapshot, type LobbySnapshot, type Team } from '@zhb/shared';
+import {
+  COOP_RULES,
+  TEAM_SIZES,
+  type LobbyPlayerSnapshot,
+  type LobbySnapshot,
+  type Team,
+} from '@zhb/shared';
 import { useEffect, useState } from 'react';
 import { useNetwork } from '../hooks/useNetwork.ts';
 import { network } from '../services/network.ts';
@@ -35,7 +41,8 @@ export function LobbyPage({ onLeft }: { onLeft: () => void }) {
   const me = lobby.players[mySessionId];
   const isHost = lobby.hostId === mySessionId;
   const players = Object.values(lobby.players).sort(byJoin);
-  const slots = TEAM_SIZES[lobby.format];
+  const coop = lobby.mode === 'cooperative';
+  const slots = coop ? COOP_RULES.maxOperators : TEAM_SIZES[lobby.format];
 
   const leave = () => {
     void network.leave().then(onLeft);
@@ -46,8 +53,8 @@ export function LobbyPage({ onLeft }: { onLeft: () => void }) {
       <header className="lobby-head">
         <div>
           <p className="eyebrow">
-            {lobby.mode.toUpperCase()} · {lobby.format.toUpperCase()} ·{' '}
-            {lobby.visibility.toUpperCase()}
+            {lobby.mode.toUpperCase()} · {coop ? 'SECURE THE FACILITY' : lobby.format.toUpperCase()}{' '}
+            · {lobby.visibility.toUpperCase()}
           </p>
           <h2>Lobby</h2>
         </div>
@@ -66,13 +73,13 @@ export function LobbyPage({ onLeft }: { onLeft: () => void }) {
       )}
 
       <div className="teams">
-        {(['attackers', 'defenders'] as const).map((team) => {
+        {(coop ? (['attackers'] as const) : (['attackers', 'defenders'] as const)).map((team) => {
           const members = players.filter((p) => p.team === team);
           const open = Math.max(0, slots - members.length);
           return (
             <section key={team} className={`team team-${team}`} aria-label={TEAM_LABEL[team]}>
               <h3>
-                {TEAM_LABEL[team]}
+                {coop ? 'Operators' : TEAM_LABEL[team]}
                 <span>
                   {members.length}/{slots}
                 </span>
@@ -89,7 +96,7 @@ export function LobbyPage({ onLeft }: { onLeft: () => void }) {
                 {Array.from({ length: open }, (_, i) => (
                   <li key={`open-${i}`} className="slot slot-open">
                     <span className="slot-name">Open slot</span>
-                    {me && me.team !== team && lobby.phase === 'lobby' && (
+                    {!coop && me && me.team !== team && lobby.phase === 'lobby' && (
                       <button className="btn btn-small" onClick={() => network.setTeam(team)}>
                         Join team
                       </button>
@@ -112,7 +119,7 @@ export function LobbyPage({ onLeft }: { onLeft: () => void }) {
           <>
             {isHost ? (
               <button className="btn btn-primary" onClick={() => network.start()}>
-                Start Match
+                {coop ? 'Start Mission' : 'Start Match'}
               </button>
             ) : (
               <button

@@ -113,6 +113,25 @@ export function PlayPage() {
         </div>
       </div>
 
+      <section className="coop-box" aria-labelledby="coop-title">
+        <p className="eyebrow" id="coop-title">
+          COOPERATIVE OPERATIONS
+        </p>
+        <h3>Secure the Facility</h3>
+        <p className="note">
+          1–4 operators against server-controlled hostiles. Clear the patrols, then hold the
+          generator room and the loading dock. Fallen operators return at each objective.
+        </p>
+        <button
+          className="action action-live"
+          disabled={!validName || busy}
+          onClick={() => run((n) => network.createRoom(n, '1v1', 'private', 'cooperative'))}
+        >
+          <span className="action-label">Start Cooperative Mission</span>
+          <span className="action-hint">Private lobby: share the code with up to 3 friends</span>
+        </button>
+      </section>
+
       {busy && (
         <p className="note" role="status">
           {net.status === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}

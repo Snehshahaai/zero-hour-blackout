@@ -5,6 +5,7 @@ import {
   lobbySnapshotSchema,
   type LobbyError,
   type LobbySnapshot,
+  type GameMode,
   type MatchFormat,
   type RoomVisibility,
   type Team,
@@ -15,6 +16,7 @@ import type {
   NetBombEvent,
   NetHit,
   NetKill,
+  NetMissionEvent,
   NetPlayer,
   NetPowerEvent,
   NetPowerState,
@@ -98,9 +100,10 @@ class Network {
     playerName: string,
     format: MatchFormat,
     visibility: RoomVisibility = 'private',
+    mode: GameMode = 'competitive',
   ): Promise<boolean> {
     return this.connect(() =>
-      this.client.create(MATCH_ROOM_NAME, { playerName, format, visibility, mode: 'competitive' }),
+      this.client.create(MATCH_ROOM_NAME, { playerName, format, visibility, mode }),
     );
   }
 
@@ -164,6 +167,13 @@ class Network {
         power: Record<string, NetPowerState>;
         doors: Record<string, { closed: boolean }>;
         weather: MatchSnapshot['weather'];
+        mode: MatchSnapshot['mode'];
+        missionState: MatchSnapshot['mission']['state'];
+        objectiveIndex: number;
+        objectiveLabel: string;
+        objectiveProgress: number;
+        missionTimeLeft: number;
+        hostilesAlive: number;
       };
       return {
         tick: raw.tick,
@@ -173,6 +183,15 @@ class Network {
         power: raw.power ?? {},
         doors: raw.doors ?? {},
         weather: raw.weather ?? 'clear',
+        mode: raw.mode ?? 'competitive',
+        mission: {
+          state: raw.missionState ?? 'briefing',
+          objectiveIndex: raw.objectiveIndex ?? 0,
+          label: raw.objectiveLabel ?? '',
+          progress: raw.objectiveProgress ?? 0,
+          timeLeft: raw.missionTimeLeft ?? 0,
+          hostiles: raw.hostilesAlive ?? 0,
+        },
         round: {
           phase: raw.roundPhase,
           number: raw.roundNumber,
@@ -208,6 +227,7 @@ class Network {
       onRound: (cb) => sub<NetRoundEvent>('round', cb),
       onBomb: (cb) => sub<NetBombEvent>('bomb', cb),
       onPower: (cb) => sub<NetPowerEvent>('power', cb),
+      onMission: (cb) => sub<NetMissionEvent>('mission', cb),
     };
   }
 

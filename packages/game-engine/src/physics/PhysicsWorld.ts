@@ -68,6 +68,30 @@ export class PhysicsWorld {
     return pw;
   }
 
+  /**
+   * True if a body of `radius` can travel in a straight line between the two floor points:
+   * three parallel rays (centre and both sides) at knee height must reach the far end.
+   */
+  segmentClear(ax: number, az: number, bx: number, bz: number, radius = 0.35, y = 0.6): boolean {
+    const dx = bx - ax;
+    const dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-6) return true;
+    const ux = dx / len;
+    const uz = dz / len;
+    for (const off of [0, radius, -radius]) {
+      const ox = ax + -uz * off;
+      const oz = az + ux * off;
+      const hit = this.world.castRay(
+        new RAPIER.Ray({ x: ox, y, z: oz }, { x: ux, y: 0, z: uz }),
+        len,
+        true,
+      );
+      if (hit) return false;
+    }
+    return true;
+  }
+
   /** Closing a door makes it solid; call from both the server and the predicting client. */
   setDoorClosed(id: string, closed: boolean): void {
     const c = this.doors.get(id);

@@ -7,7 +7,11 @@ import { createGameServer } from '../server.ts';
 const PORT = 24000 + Math.floor(Math.random() * 4000);
 const server = createGameServer(
   { CLIENT_ORIGINS: ['http://localhost:5173'] },
-  { roundRules: { freezeSeconds: 0.3, roundSeconds: 60, matchEndSeconds: 0.5 }, weather: 'rain' },
+  {
+    roundRules: { freezeSeconds: 0.3, roundSeconds: 60, matchEndSeconds: 0.5 },
+    coopRules: { briefingSeconds: 0.3, timeLimitSeconds: 1.5, resultSeconds: 0.4 },
+    weather: 'rain',
+  },
 );
 const url = `ws://localhost:${PORT}`;
 const open: Room[] = [];
@@ -311,4 +315,32 @@ describe('MatchRoom (end-to-end)', () => {
     expect(raw.power === undefined || Object.keys(raw.power as object).length === 0).toBe(true);
     expect(raw.doors === undefined || Object.keys(raw.doors as object).length === 0).toBe(true);
   });
+
+  it('cooperative: solo host starts a mission against server-run bots, fails on the clock, back to lobby', async () => {
+    const host = await create('Solo', { mode: 'cooperative' });
+    await until(() => host.state.roomCode === host.roomId, 'state');
+    expect(host.state.mode).toBe('cooperative');
+    const second = await joinCode(host.roomId, 'Buddy');
+    await until(() => players(host).length === 2, 'two operators');
+    expect(players(host).every((p) => p.team === 'attackers')).toBe(true); // one fixed team
+    const errs = errorsOf(second);
+    second.send('setTeam', { team: 'defenders' });
+    await until(() => errs.some((e) => e.code === 'coop_team'), 'team switch refused');
+    await second.leave();
+    await until(() => players(host).length === 1, 'buddy left');
+
+    host.send('start', {}); // a solo host needs nobody to be ready
+    await until(() => host.state.phase === 'inMatch', 'inMatch', 7000);
+    await until(() => host.state.sim.size >= 5, 'operator plus 4 hostiles replicated');
+    const sim = Object.values(
+      host.state.sim.toJSON() as Record<string, { isBot: boolean; team: string }>,
+    );
+    expect(sim.filter((p) => p.isBot)).toHaveLength(4);
+    expect(sim.filter((p) => !p.isBot)).toHaveLength(1);
+    expect(host.state.objectiveLabel).toBe('Eliminate the hostile patrols');
+    await until(() => host.state.missionState === 'active', 'mission active');
+    await until(() => host.state.missionState === 'failed', 'time limit fails the mission', 6000);
+    await until(() => host.state.phase === 'lobby', 'returns to lobby', 6000);
+    expect(host.state.sim.size).toBe(0);
+  }, 25000);
 });

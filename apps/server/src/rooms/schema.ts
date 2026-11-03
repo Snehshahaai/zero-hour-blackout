@@ -19,6 +19,7 @@ export const SimPlayerSchema = schema(
     id: t.string().default(''),
     name: t.string().default(''),
     team: t.string().default('attackers'),
+    isBot: t.boolean().default(false),
     side: t.string().default('attackers'),
     interactProgress: t.float32().default(0),
     x: t.float32().default(0),
@@ -86,6 +87,13 @@ export const LobbyState = schema(
     power: t.map(ZonePowerSchema),
     doors: t.map(DoorSchema),
     weather: t.string().default('clear'),
+    /** Cooperative mission state (unused in competitive matches). */
+    missionState: t.string().default('briefing'),
+    objectiveIndex: t.uint8().default(0),
+    objectiveLabel: t.string().default(''),
+    objectiveProgress: t.float32().default(0),
+    missionTimeLeft: t.float32().default(0),
+    hostilesAlive: t.uint8().default(0),
   },
   'LobbyState',
 );

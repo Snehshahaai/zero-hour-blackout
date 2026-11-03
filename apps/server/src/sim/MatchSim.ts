@@ -45,6 +45,8 @@ export type SimEvent =
 
 export interface SimPlayer {
   id: string;
+  /** AI-controlled (cooperative missions). Bots go through the same movement/weapon code. */
+  isBot: boolean;
   name: string;
   /** Fixed lobby team: scoring and friendly fire. */
   team: Team;
@@ -91,6 +93,9 @@ export class MatchSim {
   private nextNumericId = 1;
   private readonly byNumericId = new Map<number, SimPlayer>();
 
+  /** Called whenever anyone fires (position of the shooter): bots use it to "hear". */
+  shotListener: ((shooter: SimPlayer, from: Point3) => void) | null = null;
+
   /** While true, inputs are discarded (round freeze time). */
   frozen = false;
 
@@ -124,6 +129,7 @@ export class MatchSim {
     this.hitscan.register(controller.collider, hittable);
     const player: SimPlayer = {
       id,
+      isBot: false,
       name,
       team,
       side: team,
@@ -150,6 +156,36 @@ export class MatchSim {
     this.players.set(id, player);
     this.byNumericId.set(numericId, player);
     return player;
+  }
+
+  /** Adds an AI player at an explicit floor position. */
+  addBot(id: string, name: string, team: Team, x: number, z: number, yaw = 0): SimPlayer {
+    const p = this.addPlayer(id, name, team);
+    p.isBot = true;
+    p.controller.teleport(x, 0.05, z);
+    p.yaw = yaw;
+    return p;
+  }
+
+  /** Straight walkability between two floor points (used to build the nav graph). */
+  segmentClear(ax: number, az: number, bx: number, bz: number): boolean {
+    return this.physics.segmentClear(ax, az, bx, bz);
+  }
+
+  /** Can `viewerId` see the chest of `targetId` (nothing solid in between)? */
+  canSee(viewerId: string, targetId: string): boolean {
+    const viewer = this.players.get(viewerId);
+    const target = this.players.get(targetId);
+    if (!viewer || !target || !viewer.alive || !target.alive) return false;
+    const v = viewer.controller.state;
+    const t = target.controller.state;
+    const from: Point3 = { x: v.x, y: v.y + v.eyeHeight, z: v.z };
+    const to: Point3 = { x: t.x, y: t.y + 1.1, z: t.z };
+    const dist = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
+    if (dist < 1e-3) return true;
+    const dir = { x: (to.x - from.x) / dist, y: (to.y - from.y) / dist, z: (to.z - from.z) / dist };
+    const hit = this.hitscan.cast(from, dir, dist + 0.6, viewer.controller.collider);
+    return hit.kind === 'target' && hit.target.id === target.hittable.id;
   }
 
   removePlayer(id: string): void {
@@ -256,6 +292,7 @@ export class MatchSim {
       e.offset.dy,
     );
 
+    this.shotListener?.(shooter, eye);
     const restore = this.rewindOthers(shooter, input.renderTime);
     const hit = this.hitscan.cast(eye, dir, HX27.range, shooter.controller.collider);
     restore();
@@ -307,6 +344,12 @@ export class MatchSim {
     victim.queue.length = 0;
     victim.controller.setEnabled(false);
     this.emit({ type: 'kill', killer: killer.id, victim: victim.id });
+  }
+
+  /** Brings a fallen (human) player back at their side's spawn with full health (mission checkpoint). */
+  reviveAtSpawn(id: string): void {
+    const p = this.players.get(id);
+    if (p && !p.alive) this.respawn(p);
   }
 
   private respawn(p: SimPlayer): void {

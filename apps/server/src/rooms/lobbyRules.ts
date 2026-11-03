@@ -1,4 +1,4 @@
-import { TEAM_SIZES, type MatchFormat, type Team } from '@zhb/shared';
+import { COOP_RULES, TEAM_SIZES, type GameMode, type MatchFormat, type Team } from '@zhb/shared';
 
 /** The slice of a player the rules need; the Colyseus schema satisfies this structurally. */
 export interface LobbyPlayerLike {
@@ -16,7 +16,8 @@ const ok: RuleResult = { ok: true };
 const fail = (code: string, message: string): RuleResult => ({ ok: false, code, message });
 
 export const teamCapacity = (format: MatchFormat): number => TEAM_SIZES[format];
-export const roomCapacity = (format: MatchFormat): number => TEAM_SIZES[format] * 2;
+export const roomCapacity = (format: MatchFormat, mode: GameMode = 'competitive'): number =>
+  mode === 'cooperative' ? COOP_RULES.maxOperators : TEAM_SIZES[format] * 2;
 
 export function countTeam(players: Iterable<LobbyPlayerLike>, team: Team): number {
   let n = 0;
@@ -28,8 +29,11 @@ export function countTeam(players: Iterable<LobbyPlayerLike>, team: Team): numbe
 export function pickTeamForJoin(
   players: Iterable<LobbyPlayerLike>,
   format: MatchFormat,
+  mode: GameMode = 'competitive',
 ): Team | null {
   const list = [...players];
+  // Cooperative: everyone is an operator on the one human team.
+  if (mode === 'cooperative') return list.length < COOP_RULES.maxOperators ? 'attackers' : null;
   const cap = teamCapacity(format);
   const a = countTeam(list, 'attackers');
   const d = countTeam(list, 'defenders');
@@ -45,7 +49,9 @@ export function canSwitchTeam(
   player: LobbyPlayerLike,
   to: Team,
   format: MatchFormat,
+  mode: GameMode = 'competitive',
 ): RuleResult {
+  if (mode === 'cooperative') return fail('coop_team', 'Teams are fixed in cooperative missions.');
   if (player.team === to) return ok;
   if (countTeam(players, to) >= teamCapacity(format))
     return fail('team_full', 'That team is full.');
@@ -57,10 +63,19 @@ export function canStart(
   players: Iterable<LobbyPlayerLike>,
   hostId: string,
   requesterId: string,
+  mode: GameMode = 'competitive',
 ): RuleResult {
   if (requesterId !== hostId) return fail('not_host', 'Only the host can start the match.');
   const all = [...players]; // callers may pass a one-shot iterator (e.g. a Map's values())
   const present = all.filter((p) => p.connected);
+  if (mode === 'cooperative') {
+    if (present.length === 0) return fail('need_players', 'No operators present.');
+    if (present.some((p) => p.id !== hostId && !p.ready))
+      return fail('not_ready', 'Waiting for all operators to be ready.');
+    if (present.length !== all.length)
+      return fail('player_reconnecting', 'An operator is reconnecting.');
+    return ok;
+  }
   const a = countTeam(present, 'attackers');
   const d = countTeam(present, 'defenders');
   if (a === 0 || d === 0) return fail('need_both_teams', 'Both teams need at least one player.');

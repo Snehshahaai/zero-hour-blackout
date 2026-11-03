@@ -93,8 +93,21 @@
 - [ ] Not verified: audio _quality/mix_ (headless browsers can't be listened to — only that the paths run without errors), a real player cutting power by walking to a panel in a browser (covered by server tests), HRTF cost on low-end CPUs
 - Known: sounds are synthesised placeholders; mix levels are first-pass and need ears. A held interact key now expires after 200 ms without input (found while testing: an idle client otherwise kept "holding" E forever).
 
+## Phase 8: Cooperative mode — DONE (one small mission)
+
+- [x] Cooperative lobby: one fixed "Operators" team of 1-4 players (no team switching, no balance rule; a solo host can start)
+- [x] **AI bots** run server-side as ordinary sim players: a `BotBrain` produces the same `InputMessage` a human client sends, so bots obey identical movement, weapon, recoil, spread and damage rules
+- [x] Perception is honest: range, 150-degree field of view, line of sight (raycast to the chest); sound (shots within 38 m) only gives a rough, jittered area to investigate; ~0.43 s reaction time; ~2 degree aiming error; bursts, strafing, reloading in lulls
+- [x] Navigation: 38 hand-placed waypoints, edges derived from physics raycasts (can never disagree with collision), A* pathfinding, stuck detection/re-plan; tests prove all nodes are on free floor, the graph is fully connected, paths have no silly detours, and bots reach sites through doors
+- [x] Mission "Secure the Facility" (`CoopMission`): clear 4 patrolling hostiles -> hold the generator room (+2 reinforcements) -> hold the loading dock (+3 reinforcements). A hold needs an operator in the zone and no hostile close by (contested), progress decays when abandoned. Objectives are checkpoints that revive fallen operators. Fail: all operators down, or the 10-minute clock
+- [x] Client: hostile bots drawn in red, objective/hostiles/timer HUD, hold-progress bar, teammate health, mission result screen, feed messages; room returns to the lobby after the result
+- [x] 130 tests; browser-verified with two operators on a real server: lobby, mission start, HUD, 4 bots + teammate replicated, hostiles actually damaged a player, mission failed on the clock, back to the lobby, no page errors
+- [ ] Not done: more missions (recover data, protect an objective, escape), difficulty levels, bot cover usage/grenades/flanking, bots using doors/power-grid, revive-by-teammate, mission persistence/progression/rewards, AI using sound occlusion beyond line-of-sight, 4-player load test
+- [ ] Not verified: a human clearing all hostiles and securing both sites in a real browser (the logic is covered by `CoopMission` tests; walking it under software rendering was impractical), balance/difficulty tuning, bot performance with many players
+- Known: bots only see through open doors; the single mission is short and its difficulty is untuned. Bot pathing assumes doors stay open (the power-grid door is not active in co-op).
+
 ## Not implemented yet
 
-Everything else: co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
+Everything else: deployment and hardening (P9). The home-screen buttons are intentionally disabled.
 
-## Next: Phase 8 — Cooperative mode (AI opponents, mission)
+## Next: Phase 9 — Public release (deployment, testing, hardening)
