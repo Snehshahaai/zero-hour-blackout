@@ -1,7 +1,7 @@
 /** Dev-only: game server on :2567 with very short rounds, for browser soak tests. */
 import { createGameServer } from '../src/server.ts';
 const s = createGameServer(
-  { CLIENT_ORIGINS: ['http://localhost:5173'] },
+  { CLIENT_ORIGINS: ['http://localhost:5173', 'http://localhost:4173'] },
   {
     roundRules: {
       freezeSeconds: 1,

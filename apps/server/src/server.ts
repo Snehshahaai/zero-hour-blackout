@@ -48,8 +48,9 @@ export function createGameServer(
     transport: new WebSocketTransport({
       // Real messages are ~150 B; anything bigger is abuse and is dropped by the socket layer.
       maxPayload: limits.maxPayloadBytes,
-      pingInterval: 3000,
-      pingMaxRetries: 3,
+      // Tolerant on purpose: a starved free-tier CPU or a flaky mobile link must not look dead.
+      pingInterval: 5000,
+      pingMaxRetries: 4,
       beforeUpgrade: (request, context) => {
         const verdict = guard.check(request.headers.get('origin'), context.ip);
         if (verdict.ok) return;

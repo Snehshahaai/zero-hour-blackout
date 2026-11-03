@@ -1222,3 +1222,17 @@ body {
   top: 22%;
   width: 90%;
 }
+
+.conn-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 8px 16px;
+  background: rgba(120, 20, 20, 0.92);
+  color: #fff;
+  letter-spacing: 0.08em;
+  border: 1px solid var(--bad);
+  pointer-events: none;
+}

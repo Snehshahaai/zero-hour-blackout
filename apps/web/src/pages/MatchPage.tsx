@@ -1,5 +1,6 @@
 import { createMatchGame, type MatchGame, type MatchHud } from '@zhb/game-engine';
 import { useEffect, useRef, useState } from 'react';
+import { useNetwork } from '../hooks/useNetwork.ts';
 import { useControlMode } from '../hooks/useControlMode.ts';
 import { useGraphicsQuality } from '../hooks/useGraphicsQuality.ts';
 import { network } from '../services/network.ts';
@@ -15,6 +16,7 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
   const [quality] = useGraphicsQuality();
   const initialQuality = useRef(quality);
   const { touch } = useControlMode();
+  const net = useNetwork();
   const initialTouch = useRef(touch);
   const [phase, setPhase] = useState<Phase>({
     kind: 'loading',
@@ -109,6 +111,11 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
   return (
     <div className={`game${touch ? ' touch' : ''}`}>
       <div ref={hostRef} className="game-host" />
+      {net.status === 'reconnecting' && (
+        <div className="conn-banner" role="alert">
+          Connection lost — reconnecting…
+        </div>
+      )}
       {phase.kind === 'loading' && (
         <div
           className="loading"

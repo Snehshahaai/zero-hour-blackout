@@ -98,6 +98,8 @@ export function describe(e: unknown): string {
  * Owns the single lobby connection. The UI subscribes to immutable snapshots; it never
  * touches the Colyseus room. All game rules live on the server: this only sends intents.
  */
+const MATCH_EVENTS = ['shot', 'hit', 'kill', 'round', 'bomb', 'power', 'mission'] as const;
+
 class Network {
   private state: NetworkState = IDLE;
   private readonly listeners = new Set<() => void>();
@@ -175,81 +177,88 @@ class Network {
   }
 
   /** Adapter the in-match game uses to talk to the room. Null when not in a room. */
+  private buildSnapshot(room: Room): MatchSnapshot {
+    const raw = room.state.toJSON() as {
+      tick: number;
+      timeMs: number;
+      sim: Record<string, NetPlayer>;
+      roundPhase: RoundInfo['phase'];
+      roundNumber: number;
+      phaseTimeLeft: number;
+      scoreAttackers: number;
+      scoreDefenders: number;
+      swapped: boolean;
+      bombState: RoundInfo['bombState'];
+      bombSite: string;
+      matchWinner: RoundInfo['matchWinner'];
+      deathmatchKills: number;
+      power: Record<string, NetPowerState>;
+      doors: Record<string, { closed: boolean }>;
+      weather: MatchSnapshot['weather'];
+      mode: MatchSnapshot['mode'];
+      missionState: MatchSnapshot['mission']['state'];
+      objectiveIndex: number;
+      objectiveLabel: string;
+      objectiveProgress: number;
+      missionTimeLeft: number;
+      hostilesAlive: number;
+    };
+    return {
+      tick: raw.tick,
+      timeMs: raw.timeMs,
+      // toJSON() omits empty maps, so these are undefined until the server has filled them.
+      players: raw.sim ?? {},
+      power: raw.power ?? {},
+      doors: raw.doors ?? {},
+      weather: raw.weather ?? 'clear',
+      mode: raw.mode ?? 'competitive',
+      mission: {
+        state: raw.missionState ?? 'briefing',
+        objectiveIndex: raw.objectiveIndex ?? 0,
+        label: raw.objectiveLabel ?? '',
+        progress: raw.objectiveProgress ?? 0,
+        timeLeft: raw.missionTimeLeft ?? 0,
+        hostiles: raw.hostilesAlive ?? 0,
+      },
+      round: {
+        phase: raw.roundPhase,
+        number: raw.roundNumber,
+        timeLeft: raw.phaseTimeLeft,
+        scoreAttackers: raw.scoreAttackers,
+        scoreDefenders: raw.scoreDefenders,
+        swapped: raw.swapped,
+        bombState: raw.bombState,
+        bombSite: raw.bombSite,
+        matchWinner: raw.matchWinner,
+        deathmatch: raw.deathmatchKills ?? 0,
+      },
+    };
+  }
+
+  /**
+   * The game's view of the connection. It always talks to the *current* room: after a dropped
+   * connection is recovered the room object is a new one, and a bridge bound to the old room would
+   * freeze the match (no snapshots, inputs sent into the void).
+   */
   matchBridge(): MatchNet | null {
-    const room = this.room;
-    if (!room) return null;
-    const snapshot = (): MatchSnapshot => {
-      const raw = room.state.toJSON() as {
-        tick: number;
-        timeMs: number;
-        sim: Record<string, NetPlayer>;
-        roundPhase: RoundInfo['phase'];
-        roundNumber: number;
-        phaseTimeLeft: number;
-        scoreAttackers: number;
-        scoreDefenders: number;
-        swapped: boolean;
-        bombState: RoundInfo['bombState'];
-        bombSite: string;
-        matchWinner: RoundInfo['matchWinner'];
-        deathmatchKills: number;
-        power: Record<string, NetPowerState>;
-        doors: Record<string, { closed: boolean }>;
-        weather: MatchSnapshot['weather'];
-        mode: MatchSnapshot['mode'];
-        missionState: MatchSnapshot['mission']['state'];
-        objectiveIndex: number;
-        objectiveLabel: string;
-        objectiveProgress: number;
-        missionTimeLeft: number;
-        hostilesAlive: number;
-      };
-      return {
-        tick: raw.tick,
-        timeMs: raw.timeMs,
-        // toJSON() omits empty maps, so these are undefined until the server has filled them.
-        players: raw.sim ?? {},
-        power: raw.power ?? {},
-        doors: raw.doors ?? {},
-        weather: raw.weather ?? 'clear',
-        mode: raw.mode ?? 'competitive',
-        mission: {
-          state: raw.missionState ?? 'briefing',
-          objectiveIndex: raw.objectiveIndex ?? 0,
-          label: raw.objectiveLabel ?? '',
-          progress: raw.objectiveProgress ?? 0,
-          timeLeft: raw.missionTimeLeft ?? 0,
-          hostiles: raw.hostilesAlive ?? 0,
-        },
-        round: {
-          phase: raw.roundPhase,
-          number: raw.roundNumber,
-          timeLeft: raw.phaseTimeLeft,
-          scoreAttackers: raw.scoreAttackers,
-          scoreDefenders: raw.scoreDefenders,
-          swapped: raw.swapped,
-          bombState: raw.bombState,
-          bombSite: raw.bombSite,
-          matchWinner: raw.matchWinner,
-          deathmatch: raw.deathmatchKills ?? 0,
-        },
+    if (!this.room) return null;
+    const mySessionId = this.room.sessionId; // stays the same across reconnects
+    const sub = <T>(type: string, cb: (e: T) => void) => {
+      const set = this.messageListeners.get(type) ?? new Set();
+      set.add(cb as (e: unknown) => void);
+      this.messageListeners.set(type, set);
+      return () => {
+        set.delete(cb as (e: unknown) => void);
       };
     };
-    const sub = <T>(type: string, cb: (e: T) => void) => room.onMessage(type, cb);
     return {
-      mySessionId: room.sessionId,
-      sendInput: (input) => room.send('input', input),
+      mySessionId,
+      sendInput: (input) => this.room?.send('input', input),
       onSnapshot: (cb) => {
-        // Fire once per distinct server tick, not on every unrelated state change.
-        let lastTick = -1;
-        const handler = () => {
-          const snap = snapshot();
-          if (snap.tick === lastTick) return;
-          lastTick = snap.tick;
-          cb(snap);
+        this.snapshotListeners.add(cb);
+        return () => {
+          this.snapshotListeners.delete(cb);
         };
-        room.onStateChange(handler);
-        return () => room.onStateChange.remove(handler);
       },
       onShot: (cb) => sub<NetShot>('shot', cb),
       onHit: (cb) => sub<NetHit>('hit', cb),
@@ -259,6 +268,19 @@ class Network {
       onPower: (cb) => sub<NetPowerEvent>('power', cb),
       onMission: (cb) => sub<NetMissionEvent>('mission', cb),
     };
+  }
+
+  private readonly snapshotListeners = new Set<(s: MatchSnapshot) => void>();
+  private readonly messageListeners = new Map<string, Set<(e: unknown) => void>>();
+  private lastSnapshotTick = -1;
+
+  /** One snapshot per distinct server tick, fanned out to the running game. */
+  private emitSnapshot(room: Room): void {
+    if (this.snapshotListeners.size === 0) return;
+    const snap = this.buildSnapshot(room);
+    if (snap.tick === this.lastSnapshotTick) return;
+    this.lastSnapshotTick = snap.tick;
+    for (const l of this.snapshotListeners) l(snap);
   }
 
   setTeam(team: Team): void {
@@ -296,6 +318,12 @@ class Network {
     this.sync(room);
 
     room.onStateChange(() => this.sync(room));
+    this.lastSnapshotTick = -1;
+    room.onStateChange(() => this.emitSnapshot(room));
+    for (const type of MATCH_EVENTS)
+      room.onMessage(type, (e: unknown) => {
+        for (const l of this.messageListeners.get(type) ?? []) l(e);
+      });
     room.onMessage('error', (raw: unknown) => {
       const parsed = lobbyErrorSchema.safeParse(raw);
       if (parsed.success) this.set({ notice: parsed.data });
@@ -312,7 +340,21 @@ class Network {
     });
   }
 
+  private lastSync = 0;
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
+
   private sync(room: Room): void {
+    // In a match the lobby view only matters when something changes; skip the 20 Hz re-parsing.
+    const now = performance.now();
+    if (this.state.lobby?.phase === 'inMatch' && now - this.lastSync < 500) {
+      // Trailing sync, so a change that lands inside the window (match over) is never lost.
+      this.syncTimer ??= setTimeout(() => {
+        this.syncTimer = null;
+        if (this.room === room) this.sync(room);
+      }, 500);
+      return;
+    }
+    this.lastSync = now;
     const raw = room.state.toJSON() as Record<string, unknown>;
     if (!raw.roomCode) return; // initial state has not arrived yet
     const parsed = lobbySnapshotSchema.safeParse(raw);
