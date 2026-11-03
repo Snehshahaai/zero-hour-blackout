@@ -7,6 +7,12 @@ interface Props {
 
 const ENTRIES: { label: string; hint: string; tag: string; route: Route }[] = [
   {
+    label: 'Practice vs Bot',
+    hint: 'Full match with bomb against AI',
+    tag: 'Competitive · 1v1 / 2v2',
+    route: 'play',
+  },
+  {
     label: 'Play Online',
     hint: 'Competitive matchmaking',
     tag: 'Competitive · 1v1 / 2v2',

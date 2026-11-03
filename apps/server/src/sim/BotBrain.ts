@@ -1,4 +1,4 @@
-import type { InputMessage, Team } from '@zhb/shared';
+import type { BotDifficulty, InputMessage, Team } from '@zhb/shared';
 import { mulberry32 } from '@zhb/game-engine/sim';
 import type { MatchSim, SimPlayer } from './MatchSim.ts';
 import type { NavGraph, NavNode } from './nav.ts';
@@ -6,11 +6,38 @@ import type { NavGraph, NavNode } from './nav.ts';
 const SIGHT_RANGE = 42;
 /** Half field-of-view (radians). Bots do not see behind them. */
 const HALF_FOV = (75 * Math.PI) / 180;
-const REACTION_TICKS = 26; // ~0.43 s from first sight to first shot
 const LOSE_TARGET_TICKS = 100;
-const TURN_RATE = 0.075; // rad per tick (~4.5 rad/s)
-const AIM_ERROR = 0.035; // rad (~2 deg) of per-half-second aiming error
 const ARRIVE = 0.9;
+
+/** Difficulty knobs. Bots never get extra speed, vision or perfect aim: only slower or sharper. */
+export interface BotTuning {
+  /** Ticks between first sight and first shot (60 per second). */
+  reaction: number;
+  /** Aim error half-angle in radians, re-rolled every half second. */
+  aimError: number;
+  /** Max view turn per tick, radians. */
+  turnRate: number;
+  /** Multiplier on the pause between bursts (bigger = fires less often). */
+  pauseScale: number;
+}
+
+export type { BotDifficulty };
+
+export const BOT_TUNING: Record<BotDifficulty, BotTuning> = {
+  easy: { reaction: 50, aimError: 0.075, turnRate: 0.05, pauseScale: 1.7 },
+  normal: { reaction: 26, aimError: 0.035, turnRate: 0.075, pauseScale: 1 },
+  hard: { reaction: 14, aimError: 0.018, turnRate: 0.1, pauseScale: 0.7 },
+};
+
+/**
+ * What a bot is trying to do when it is not fighting. `route` walks/guards a loop of nav nodes;
+ * `plant`/`defuse` go to a site and hold the interact key once close enough (the round rules
+ * decide whether it actually works).
+ */
+export type BotGoal =
+  | { kind: 'route'; nodes: string[]; sprint?: boolean }
+  | { kind: 'plant'; node: string; center: readonly [number, number]; radius: number }
+  | { kind: 'defuse'; node: string; center: readonly [number, number]; radius: number };
 
 export type BotMode = 'patrol' | 'hunt';
 type BotState = 'move' | 'combat' | 'search';
@@ -20,6 +47,7 @@ export interface BotConfig {
   mode: BotMode;
   /** Patrol loop (node ids) or, for hunters, [destination, ...nearby nodes to search]. */
   route: string[];
+  tuning?: Partial<BotTuning>;
 }
 
 interface Memory {
@@ -58,6 +86,10 @@ export class BotBrain {
   private stuckTicks = 0;
   private reloadPulse = false;
   private readonly rand: () => number;
+  private readonly tune: BotTuning;
+  private goal: BotGoal | null = null;
+  private goalKey = '';
+  private interactNow = false;
 
   constructor(
     readonly config: BotConfig,
@@ -66,11 +98,22 @@ export class BotBrain {
     seed: number,
   ) {
     this.rand = mulberry32(seed);
+    this.tune = { ...BOT_TUNING.normal, ...config.tuning };
     this.aimYaw = sim.players.get(config.id)?.yaw ?? 0;
   }
 
   get stateName(): BotState {
     return this.state;
+  }
+
+  /** Sets what the bot does when not fighting. Re-setting the same goal is free. */
+  setGoal(goal: BotGoal | null): void {
+    const key = JSON.stringify(goal);
+    if (key === this.goalKey) return;
+    this.goalKey = key;
+    this.goal = goal;
+    this.path = [];
+    this.routeIdx = 0;
   }
 
   /** Something audible happened near the bot at (x, z): go and look. */
@@ -96,6 +139,7 @@ export class BotBrain {
     let wishX = 0;
     let wishZ = 0;
     let sprint = false;
+    this.interactNow = false;
 
     if (target) {
       if (this.state !== 'combat') {
@@ -119,12 +163,14 @@ export class BotBrain {
         Math.abs(wrap(wantYaw + this.errYaw - this.aimYaw)) < 0.07 &&
         Math.abs(wantPitch + this.errPitch - this.aimPitch) < 0.09;
 
-      if (this.seenTicks > REACTION_TICKS) {
+      if (this.seenTicks > this.tune.reaction) {
         if (this.fireLeft > 0) {
           // Hold still while shooting: moving makes the weapon much less accurate.
           this.fireLeft--;
           fire = onTarget;
-          if (this.fireLeft === 0) this.pauseLeft = 22 + Math.floor(this.rand() * 26);
+          if (this.fireLeft === 0) {
+            this.pauseLeft = Math.round((22 + Math.floor(this.rand() * 26)) * this.tune.pauseScale);
+          }
         } else if (this.pauseLeft > 0) {
           this.pauseLeft--;
           if (this.pauseLeft === 0) this.fireLeft = 14 + Math.floor(this.rand() * 22);
@@ -197,7 +243,8 @@ export class BotBrain {
       crouch: false,
       fire,
       reload,
-      interact: false,
+      // Never interact while fighting: shooting at an enemy interrupts a plant/defuse, as for humans.
+      interact: this.interactNow && this.state !== 'combat',
       yaw: this.aimYaw,
       pitch: this.aimPitch,
       renderTime: this.sim.timeMs,
@@ -235,13 +282,13 @@ export class BotBrain {
   private refreshAimError(): void {
     if (this.errTicks-- > 0) return;
     this.errTicks = 30;
-    this.errYaw = (this.rand() * 2 - 1) * AIM_ERROR;
-    this.errPitch = (this.rand() * 2 - 1) * AIM_ERROR * 0.7;
+    this.errYaw = (this.rand() * 2 - 1) * this.tune.aimError;
+    this.errPitch = (this.rand() * 2 - 1) * this.tune.aimError * 0.7;
   }
 
   private turnTo(yaw: number, pitch: number): void {
-    this.aimYaw += clamp(wrap(yaw - this.aimYaw), TURN_RATE);
-    this.aimPitch += clamp(pitch - this.aimPitch, TURN_RATE);
+    this.aimYaw += clamp(wrap(yaw - this.aimYaw), this.tune.turnRate);
+    this.aimPitch += clamp(pitch - this.aimPitch, this.tune.turnRate);
   }
 
   // ---- navigation ------------------------------------------------------------------
@@ -257,15 +304,33 @@ export class BotBrain {
         this.memory = null;
       }
     }
-    if (this.state === 'move' && this.path.length === 0) {
-      const route = this.config.route;
+    const goal = this.goal;
+    if (this.state === 'move' && goal && goal.kind !== 'route') {
+      // Objective: walk to the site, then stand still holding the interact key.
+      const dist = Math.hypot(s.x - goal.center[0], s.z - goal.center[1]);
+      if (dist <= goal.radius) {
+        this.interactNow = true;
+        this.path = [];
+        return { x: 0, z: 0, sprint: false };
+      }
+      if (this.path.length === 0) {
+        const start = this.nav.nearest(s.x, s.z);
+        this.path = (start && this.nav.path(start.id, goal.node)) || [];
+        if (this.path.length === 0) {
+          // No graph route (or already at the last node): walk straight at the site.
+          return { x: goal.center[0] - s.x, z: goal.center[1] - s.z, sprint: false };
+        }
+      }
+    } else if (this.state === 'move' && this.path.length === 0) {
+      const route = goal?.kind === 'route' ? goal.nodes : this.config.route;
       const id = route[this.routeIdx % route.length];
       const start = this.nav.nearest(s.x, s.z);
       if (id && start) {
         const p = this.nav.path(start.id, id);
         this.path = p ?? [];
         // Hunters go to their destination once, then wander the nearby nodes.
-        if (this.config.mode === 'patrol' || this.routeIdx > 0) this.routeIdx++;
+        if (this.config.mode === 'patrol' || this.routeIdx > 0 || goal?.kind === 'route')
+          this.routeIdx++;
         else this.routeIdx = 1;
         if (route.length === 1) this.routeIdx = 0;
       }
@@ -284,7 +349,12 @@ export class BotBrain {
       }
       return { x: 0, z: 0, sprint: false };
     }
-    return { x: dx, z: dz, sprint: this.config.mode === 'hunt' && Math.hypot(dx, dz) > 6 };
+    const sprintGoal = goal?.kind === 'route' ? goal.sprint === true : goal !== null;
+    return {
+      x: dx,
+      z: dz,
+      sprint: (this.config.mode === 'hunt' || sprintGoal) && Math.hypot(dx, dz) > 6,
+    };
   }
 
   private detectStuck(me: SimPlayer): void {

@@ -71,6 +71,7 @@ export class PhysicsWorld {
   /**
    * True if a body of `radius` can travel in a straight line between the two floor points:
    * three parallel rays (centre and both sides) at knee height must reach the far end.
+   * Characters are ignored, so standing players never make the level look blocked.
    */
   segmentClear(ax: number, az: number, bx: number, bz: number, radius = 0.35, y = 0.6): boolean {
     const dx = bx - ax;
@@ -86,6 +87,13 @@ export class PhysicsWorld {
         new RAPIER.Ray({ x: ox, y, z: oz }, { x: ux, y: 0, z: uz }),
         len,
         true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        // Walkability is about the level (walls, props, closed doors), never about characters:
+        // players and bots own a rigid body, static geometry and doors do not.
+        (collider) => collider.parent() === null,
       );
       if (hit) return false;
     }

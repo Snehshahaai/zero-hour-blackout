@@ -87,3 +87,10 @@
 - Room lifetime: Colyseus auto-disposes only when the last _client_ disconnects; rooms whose players all expire out of the reconnect grace are closed explicitly.
 - Limits are configuration (`Limits` in `services/guards.ts`, env vars in `.env.example`), enforced server-side; tests pass tight limits to prove they bite.
 - Close code 1006 covers both network drops and oversized-message kicks; they cannot be told apart server-side (documented in SECURITY.md).
+
+## Mobile and bots notes (Phase 10)
+
+- Touch is an input source, not a code path: `TouchControls` (DOM overlay) writes a `TouchState`; `InputManager` ORs it into `isDown/isMouseDown/consume*`, so `Sandbox`/`MatchGame` only changed to pass `{ touch }` and a pause callback. The stick maths and the key mapping live in `touchState.ts` and are unit-tested without a DOM.
+- With touch controls, "locked" means "the player tapped to play" (no Pointer Lock). A tap that pauses also yields a `click` on the overlay that appears under the finger; the pages ignore overlay clicks for 500 ms after unlocking.
+- `BotBrain` gained goals (`route`, `plant`, `defuse`) and difficulty tuning; `CompetitiveBots` maps round state to goals (it never touches rules: plant/defuse still go through `RoundManager`'s server validation like for humans). `NavGraph.rebuild()` recomputes edges from the live collision world; `PhysicsWorld.segmentClear` must ignore characters (a rebuild once cut every edge around bodies standing at spawn).
+- Practice rooms (`fillBots`) are private by construction, start with a lone host, and add bots only to slots no human took.

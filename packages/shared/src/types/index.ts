@@ -4,6 +4,7 @@ export type MatchFormat = '1v1' | '2v2' | '5v5';
 export type GraphicsQuality = 'low' | 'medium' | 'high';
 export type RoomVisibility = 'public' | 'private';
 export type LobbyPhase = 'lobby' | 'starting' | 'inMatch';
+export type BotDifficulty = 'easy' | 'normal' | 'hard';
 export type RoundPhase = 'freeze' | 'live' | 'planted' | 'roundEnd' | 'matchEnd';
 export type BombState = 'none' | 'planted';
 export type Weather = 'clear' | 'fog' | 'rain';

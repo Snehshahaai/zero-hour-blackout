@@ -1,5 +1,12 @@
-/** Keyboard + mouse + pointer lock. Holds raw state only; gameplay interprets it. */
+import type { TouchControls } from './TouchControls.ts';
+
+/**
+ * Keyboard + mouse + pointer lock, plus optional touch controls. Holds raw state only; gameplay
+ * interprets it. With touch controls attached, "locked" means the player has tapped to play.
+ */
 export class InputManager {
+  private touchActive = false;
+  private prevTouchFire = false;
   private readonly down = new Set<string>();
   private mouseDx = 0;
   private mouseDy = 0;
@@ -9,7 +16,10 @@ export class InputManager {
   private firePressed = false;
   private lockListeners = new Set<(locked: boolean) => void>();
 
-  constructor(private readonly element: HTMLElement) {
+  constructor(
+    private readonly element: HTMLElement,
+    private readonly touch: TouchControls | null = null,
+  ) {
     document.addEventListener('keydown', this.onKeyDown);
     document.addEventListener('keyup', this.onKeyUp);
     document.addEventListener('mousemove', this.onMouseMove);
@@ -20,17 +30,39 @@ export class InputManager {
   }
 
   get locked(): boolean {
-    return document.pointerLockElement === this.element;
+    return this.touch ? this.touchActive : document.pointerLockElement === this.element;
   }
 
   requestLock(): void {
+    if (this.touch) {
+      // Called from a tap, so fullscreen/orientation requests are allowed. Both are best-effort:
+      // iPhone Safari supports neither, and the game works without them.
+      void document.documentElement.requestFullscreen?.().catch(() => undefined);
+      void (screen.orientation as { lock?: (o: string) => Promise<void> } | undefined)
+        ?.lock?.('landscape')
+        .catch(() => undefined);
+      this.setTouchActive(true);
+      return;
+    }
     // Promise-returning in modern browsers; a refused request (e.g. user pressed Esc just before)
     // is harmless, so swallow it.
     void Promise.resolve(this.element.requestPointerLock()).catch(() => undefined);
   }
 
   exitLock(): void {
+    if (this.touch) {
+      this.setTouchActive(false);
+      return;
+    }
     if (this.locked) document.exitPointerLock();
+  }
+
+  private setTouchActive(active: boolean): void {
+    if (this.touchActive === active) return;
+    this.touchActive = active;
+    this.touch?.setVisible(active);
+    if (!active) this.releaseAll();
+    for (const l of this.lockListeners) l(active);
   }
 
   onLockChange(listener: (locked: boolean) => void): () => void {
@@ -39,35 +71,40 @@ export class InputManager {
   }
 
   isDown(code: string): boolean {
-    return this.down.has(code);
+    return this.down.has(code) || (this.touch?.state.isDown(code) ?? false);
   }
 
   /** Returns accumulated mouse movement since the last call. */
   consumeMouse(): { dx: number; dy: number } {
-    const r = { dx: this.mouseDx, dy: this.mouseDy };
+    const t = this.touch?.state.consumeLook() ?? { dx: 0, dy: 0 };
+    const r = { dx: this.mouseDx + t.dx, dy: this.mouseDy + t.dy };
     this.mouseDx = this.mouseDy = 0;
     return r;
   }
 
   isMouseDown(button: number): boolean {
-    return this.buttons.has(button);
+    return this.buttons.has(button) || (button === 0 && (this.touch?.state.fire ?? false));
   }
 
   /** True once per primary-button press (edge). */
   consumeFirePressed(): boolean {
-    const f = this.firePressed;
+    const touchFire = this.touch?.state.fire ?? false;
+    const touchEdge = touchFire && !this.prevTouchFire; // a press, not a held button
+    this.prevTouchFire = touchFire;
+    const f = this.firePressed || touchEdge;
     this.firePressed = false;
     return f;
   }
 
   /** True once per key press (edge) for `code`. */
   consumePressed(code: string): boolean {
+    if (code === 'KeyR' && this.touch?.state.consumeReload()) return true;
     return this.pressed.delete(code);
   }
 
   /** True once per Space press (edge), for buffered jumping. */
   consumeJump(): boolean {
-    const j = this.jumpQueued;
+    const j = this.jumpQueued || (this.touch?.state.consumeJump() ?? false);
     this.jumpQueued = false;
     return j;
   }

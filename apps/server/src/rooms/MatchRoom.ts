@@ -15,6 +15,7 @@ import {
   createRoomOptionsSchema,
   lobbyMessageSchemas,
   playerJoinOptionsSchema,
+  type BotDifficulty,
   type GameMode,
   type MatchFormat,
   type RoomVisibility,
@@ -26,11 +27,13 @@ import {
   pickTeamForJoin,
   RateLimiter,
   roomCapacity,
+  teamCapacity,
   uniqueName,
 } from './lobbyRules.ts';
 import { MAP_01, initPhysics } from '@zhb/game-engine/sim';
 import { metrics } from '../services/metrics.ts';
 import { MatchSim, type SimEvent } from '../sim/MatchSim.ts';
+import { CompetitiveBots } from '../sim/CompetitiveBots.ts';
 import { CoopMission, type MissionEvent } from '../sim/CoopMission.ts';
 import { PowerGrid, type PowerEvent } from '../sim/PowerGrid.ts';
 import { RoundManager, type RoundEvent } from '../sim/RoundManager.ts';
@@ -86,6 +89,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   private rounds: RoundManager | null = null;
   private power: PowerGrid | null = null;
   private coop: CoopMission | null = null;
+  private bots: CompetitiveBots | null = null;
   private joinCounter = 0;
   private countdownTimer: { clear(): void } | null = null;
 
@@ -97,7 +101,9 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     }
     const parsed = createRoomOptionsSchema.safeParse(options);
     if (!parsed.success) throw new ServerError(400, 'Invalid room options');
-    const { format, mode, visibility } = parsed.data;
+    const { format, mode, fillBots, botDifficulty } = parsed.data;
+    // Rooms with bots are always private: they are practice rooms, never matched into public play.
+    const visibility = fillBots && mode === 'competitive' ? 'private' : parsed.data.visibility;
 
     let code = randomCode();
     for (let i = 0; i < 20 && (await matchMaker.getRoomById(code)); i++) code = randomCode();
@@ -111,6 +117,8 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.state.format = format;
     this.state.mode = mode;
     this.state.visibility = visibility;
+    this.state.fillBots = fillBots && mode === 'competitive';
+    this.state.botDifficulty = botDifficulty;
     this.metadata = { roomCode: code, visibility, format, mode };
   }
 
@@ -170,6 +178,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.rounds = null;
     this.power = null;
     this.coop = null;
+    this.bots = null;
   }
 
   override messages = {
@@ -210,6 +219,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
         this.state.hostId,
         client.sessionId,
         this.state.mode as GameMode,
+        this.state.fillBots,
       );
       if (!result.ok) return this.reject(client, result.code, result.message);
       this.beginCountdown();
@@ -241,10 +251,29 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
         (e) => this.onRoundEvent(e),
         MatchRoom.roundRules,
       );
+      if (this.state.fillBots) this.addBotsToEmptySlots(sim, this.rounds);
       this.rounds.start();
     }
     this.patchRate = 50; // 20 Hz state broadcast; the sim itself ticks at 60 Hz
     this.setSimulationInterval(() => this.stepSim(), 1000 / MATCH_TICK_RATE);
+  }
+
+  /** Practice rooms: AI players take every slot no human filled, on both teams. */
+  private addBotsToEmptySlots(sim: MatchSim, rounds: RoundManager): void {
+    const bots = new CompetitiveBots(
+      sim,
+      rounds,
+      MAP_01,
+      this.state.botDifficulty as BotDifficulty,
+      Date.now() & 0x7fffffff,
+    );
+    const size = teamCapacity(this.state.format as MatchFormat);
+    for (const team of ['attackers', 'defenders'] as const) {
+      let humans = 0;
+      for (const p of this.state.players.values()) if (p.team === team) humans++;
+      for (let i = humans; i < size; i++) bots.addBot(team);
+    }
+    this.bots = bots;
   }
 
   private stepSim(): void {
@@ -259,6 +288,9 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   }
 
   private stepSimInner(sim: MatchSim): void {
+    // Bots queue their inputs first, exactly like clients do between ticks. The door signature
+    // makes them re-plan their routes when an electronic door opens or closes.
+    this.bots?.step(this.power ? [...this.power.doorsClosed.values()].join() : '');
     sim.step();
     this.rounds?.step();
     if (this.sim !== sim) return; // the round manager ended the match and reset the room
@@ -343,7 +375,10 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       this.resetToLobby();
       return;
     }
-    if (e.type === 'roundStart') this.power?.reset();
+    if (e.type === 'roundStart') {
+      this.power?.reset();
+      this.bots?.onRoundStart();
+    }
     this.broadcast(e.type === 'bomb' ? 'bomb' : 'round', e);
   }
 
@@ -367,6 +402,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.rounds = null;
     this.power = null;
     this.coop = null;
+    this.bots = null;
     this.state.missionState = 'briefing';
     this.state.objectiveIndex = 0;
     this.state.objectiveLabel = '';

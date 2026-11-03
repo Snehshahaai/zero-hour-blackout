@@ -5,6 +5,7 @@ import {
   lobbySnapshotSchema,
   type LobbyError,
   type LobbySnapshot,
+  type BotDifficulty,
   type GameMode,
   type MatchFormat,
   type RoomVisibility,
@@ -121,9 +122,10 @@ class Network {
     format: MatchFormat,
     visibility: RoomVisibility = 'private',
     mode: GameMode = 'competitive',
+    bots?: { fillBots: true; botDifficulty: BotDifficulty },
   ): Promise<boolean> {
     return this.connect(() =>
-      this.client.create(MATCH_ROOM_NAME, { playerName, format, visibility, mode }),
+      this.client.create(MATCH_ROOM_NAME, { playerName, format, visibility, mode, ...bots }),
     );
   }
 

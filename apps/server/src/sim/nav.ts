@@ -70,18 +70,25 @@ export class NavGraph {
   constructor(
     readonly nodes: readonly NavNode[],
     readonly clear: (ax: number, az: number, bx: number, bz: number) => boolean,
-    maxEdge = 16,
+    private readonly maxEdge = 16,
   ) {
-    for (const n of nodes) {
-      this.byId.set(n.id, n);
-      this.adj.set(n.id, []);
-    }
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i] as NavNode;
-        const b = nodes[j] as NavNode;
+    for (const n of nodes) this.byId.set(n.id, n);
+    this.rebuild();
+  }
+
+  /**
+   * (Re)computes every edge from the live collision world. Call after something that changes
+   * walkability, e.g. an electronic door closing, so bots stop routing through it.
+   */
+  rebuild(): void {
+    this.adj.clear();
+    for (const n of this.nodes) this.adj.set(n.id, []);
+    for (let i = 0; i < this.nodes.length; i++) {
+      for (let j = i + 1; j < this.nodes.length; j++) {
+        const a = this.nodes[i] as NavNode;
+        const b = this.nodes[j] as NavNode;
         const d = Math.hypot(a.x - b.x, a.z - b.z);
-        if (d > maxEdge || !clear(a.x, a.z, b.x, b.z)) continue;
+        if (d > this.maxEdge || !this.clear(a.x, a.z, b.x, b.z)) continue;
         this.adj.get(a.id)?.push({ to: b.id, cost: d });
         this.adj.get(b.id)?.push({ to: a.id, cost: d });
       }

@@ -24,6 +24,7 @@ import { FirstPersonCamera } from './camera/FirstPersonCamera.ts';
 import { MOVEMENT } from './entities/movement.ts';
 import { PlayerController, type MoveInput } from './entities/PlayerController.ts';
 import { InputManager } from './input/InputManager.ts';
+import { TouchControls } from './input/TouchControls.ts';
 import { Hitscan, viewDirection, type Point3 } from './physics/Hitscan.ts';
 import { FIXED_DT, initPhysics, PhysicsWorld } from './physics/PhysicsWorld.ts';
 import { Effects } from './rendering/Effects.ts';
@@ -220,6 +221,8 @@ export interface MatchHud {
 export interface MatchGame {
   readonly locked: boolean;
   requestLock(): void;
+  /** Pause: release the mouse / hide the touch controls. */
+  releaseLock(): void;
   onLockChange(l: (locked: boolean) => void): () => void;
   onHud(l: (s: MatchHud) => void): () => void;
   setQuality(q: GraphicsQuality): void;
@@ -275,6 +278,7 @@ export async function createMatchGame(
   quality: GraphicsQuality,
   net: MatchNet,
   onProgress?: ProgressFn,
+  options: { touch?: boolean } = {},
 ): Promise<MatchGame> {
   await initPhysics();
   const gr = new GameRenderer(canvas, quality);
@@ -296,7 +300,13 @@ export async function createMatchGame(
   const fpCamera = new FirstPersonCamera(gr.camera);
   gr.camera.fov = 75;
   gr.camera.updateProjectionMatrix();
-  const input = new InputManager(canvas);
+  const pause = { fn: () => undefined as void };
+  const touch =
+    options.touch && canvas.parentElement
+      ? new TouchControls(canvas.parentElement, () => pause.fn())
+      : null;
+  const input = new InputManager(canvas, touch);
+  pause.fn = () => input.exitLock();
   const audio = new AudioEngine();
   const effects = new Effects(gr.scene);
   const viewModel = new ViewModel(gr.viewScene);
@@ -306,6 +316,8 @@ export async function createMatchGame(
   const headGeo = new SphereGeometry(0.17, 12, 8);
   const gunGeo = new BoxGeometry(0.06, 0.08, 0.5);
   const remotes = new Map<string, Remote>();
+  /** Bots are tinted hostile only in co-op; in competitive they are just opponents/teammates. */
+  let coopMode = false;
 
   // ---- prediction state ----
   let seq = 0;
@@ -389,7 +401,7 @@ export async function createMatchGame(
 
   const makeRemote = (p: NetPlayer): Remote => {
     const mat = new MeshStandardMaterial({
-      color: p.isBot ? 0xb23a3a : TEAM_COLOR[p.team],
+      color: coopMode && p.isBot ? 0xb23a3a : TEAM_COLOR[p.team],
       roughness: 0.7,
     });
     const group = new Group();
@@ -408,6 +420,7 @@ export async function createMatchGame(
 
   // ---- snapshots ----
   const offSnapshot = net.onSnapshot((snap) => {
+    coopMode = snap.mode === 'cooperative';
     const sample = snap.timeMs - performance.now();
     serverOffset = serverOffset === null ? sample : serverOffset + (sample - serverOffset) * 0.1;
 
@@ -477,7 +490,7 @@ export async function createMatchGame(
           }
         : null;
       hud.teammates = Object.values(snap.players)
-        .filter((p) => !p.isBot && p.team === me.team && p.id !== me.id)
+        .filter((p) => (coopMode ? !p.isBot : true) && p.team === me.team && p.id !== me.id)
         .map((p) => ({ name: p.name, health: p.health, alive: p.alive }));
       hud.prompt = coop ? null : computePrompt(me, ri);
       hud.weather = snap.weather;
@@ -488,7 +501,7 @@ export async function createMatchGame(
       hud.alive = me.alive;
     }
     hud.scores = Object.values(snap.players)
-      .filter((p) => !p.isBot)
+      .filter((p) => (coopMode ? !p.isBot : true))
       .map((p) => ({
         id: p.id,
         name: p.name,
@@ -963,6 +976,7 @@ export async function createMatchGame(
       audio.unlock();
       input.requestLock();
     },
+    releaseLock: () => input.exitLock(),
     onLockChange: (l) => input.onLockChange(l),
     onHud(l) {
       listeners.add(l);
@@ -1001,6 +1015,7 @@ export async function createMatchGame(
       weather.dispose();
       removeBomb();
       input.dispose();
+      touch?.dispose();
       audio.dispose();
       listeners.clear();
       for (const r of remotes.values()) {

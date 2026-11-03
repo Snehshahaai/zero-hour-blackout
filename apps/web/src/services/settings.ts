@@ -1,4 +1,5 @@
 import { graphicsQualitySchema, type GraphicsQuality } from '@zhb/shared';
+import { isCoarsePointer } from './controls.ts';
 
 const KEY = 'zhb.graphicsQuality';
 const listeners = new Set<() => void>();
@@ -11,7 +12,8 @@ function read(): GraphicsQuality {
   } catch {
     /* storage unavailable (private mode) */
   }
-  return 'medium';
+  // Phones and tablets have far less GPU headroom: start light, players can raise it in Settings.
+  return isCoarsePointer() ? 'low' : 'medium';
 }
 
 export const graphicsSettings = {

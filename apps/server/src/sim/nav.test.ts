@@ -70,3 +70,25 @@ describe('Map 01 navigation graph', () => {
     expect(len).toBeLessThan(Math.hypot(a.x - b.x, a.z - b.z) * 2.2);
   });
 });
+
+describe('walkability queries ignore characters but respect doors', () => {
+  it('a player standing in a corridor does not make it look blocked', async () => {
+    const { PlayerController } = await import('@zhb/game-engine/sim');
+    const w = PhysicsWorld.fromMap(MAP_01);
+    const before = w.segmentClear(26, 26.5, 37, 26.5);
+    new PlayerController(w, { x: 31.5, y: 0.05, z: 26.5 });
+    expect(w.segmentClear(26, 26.5, 37, 26.5)).toBe(before);
+    expect(before).toBe(true);
+    w.dispose();
+  });
+
+  it('a closed electronic door blocks the route, and opening it clears it', () => {
+    const w = PhysicsWorld.fromMap(MAP_01);
+    expect(w.segmentClear(20.2, 14, 20.2, 6)).toBe(true);
+    w.setDoorClosed('D-security-south', true);
+    expect(w.segmentClear(20.2, 14, 20.2, 6)).toBe(false);
+    w.setDoorClosed('D-security-south', false);
+    expect(w.segmentClear(20.2, 14, 20.2, 6)).toBe(true);
+    w.dispose();
+  });
+});

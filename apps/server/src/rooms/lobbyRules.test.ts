@@ -138,3 +138,31 @@ describe('cooperative lobby rules', () => {
     expect(canStart([host, a, away], host.id, host.id, 'cooperative')).toMatchObject({ ok: false });
   });
 });
+
+describe('competitive lobby with bots filling empty slots', () => {
+  it('a solo human can start (no team-balance rule), but everyone present must be ready', () => {
+    const host = P('attackers');
+    expect(canStart([host], host.id, host.id, 'competitive', false)).toMatchObject({
+      code: 'need_both_teams',
+    });
+    expect(canStart([host], host.id, host.id, 'competitive', true)).toEqual({ ok: true });
+    const friend = P('attackers', { ready: false });
+    expect(canStart([host, friend], host.id, host.id, 'competitive', true)).toMatchObject({
+      code: 'not_ready',
+    });
+    friend.ready = true;
+    expect(canStart([host, friend], host.id, host.id, 'competitive', true)).toEqual({ ok: true });
+  });
+
+  it('only the host can start, and a reconnecting human blocks the start', () => {
+    const host = P('attackers');
+    const other = P('defenders', { ready: true });
+    expect(canStart([host, other], host.id, other.id, 'competitive', true)).toMatchObject({
+      code: 'not_host',
+    });
+    const away = P('defenders', { ready: true, connected: false });
+    expect(canStart([host, away], host.id, host.id, 'competitive', true)).toMatchObject({
+      ok: false,
+    });
+  });
+});

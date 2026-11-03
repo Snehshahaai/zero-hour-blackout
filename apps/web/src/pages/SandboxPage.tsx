@@ -1,5 +1,6 @@
 import { createSandbox, type HudState, type Sandbox, type SandboxDebug } from '@zhb/game-engine';
 import { useEffect, useRef, useState } from 'react';
+import { useControlMode } from '../hooks/useControlMode.ts';
 import { useGraphicsQuality } from '../hooks/useGraphicsQuality.ts';
 
 type Phase =
@@ -12,8 +13,17 @@ export function SandboxPage({ onExit }: { onExit: () => void }) {
   const sandboxRef = useRef<Sandbox | null>(null);
   const [quality] = useGraphicsQuality();
   const initialQuality = useRef(quality);
+  const { touch } = useControlMode();
+  const initialTouch = useRef(touch);
   const [phase, setPhase] = useState<Phase>({ kind: 'loading', fraction: 0, label: 'Starting' });
   const [locked, setLocked] = useState(false);
+  // The tap that pauses also produces a `click` on the overlay that appears under the finger; ignore
+  // overlay clicks right after unlocking or the game would resume instantly.
+  const unlockedAt = useRef(0);
+  const onLock = (l: boolean) => {
+    if (!l) unlockedAt.current = performance.now();
+    setLocked(l);
+  };
   const [dbg, setDbg] = useState<SandboxDebug | null>(null);
   const [hud, setHud] = useState<HudState | null>(null);
 
@@ -26,13 +36,18 @@ export function SandboxPage({ onExit }: { onExit: () => void }) {
     host.appendChild(canvas);
     let cancelled = false;
     const unsubscribers: (() => void)[] = [];
-    createSandbox(canvas, initialQuality.current, (fraction, label) => {
-      if (!cancelled) setPhase({ kind: 'loading', fraction, label });
-    })
+    createSandbox(
+      canvas,
+      initialQuality.current,
+      (fraction, label) => {
+        if (!cancelled) setPhase({ kind: 'loading', fraction, label });
+      },
+      { touch: initialTouch.current },
+    )
       .then((sb) => {
         if (cancelled) return sb.dispose();
         sandboxRef.current = sb;
-        unsubscribers.push(sb.onLockChange(setLocked), sb.onHud(setHud));
+        unsubscribers.push(sb.onLockChange(onLock), sb.onHud(setHud));
         setPhase({ kind: 'ready' });
       })
       .catch((e: unknown) => {
@@ -58,7 +73,7 @@ export function SandboxPage({ onExit }: { onExit: () => void }) {
   }, [phase.kind]);
 
   return (
-    <div className="game">
+    <div className={`game${touch ? ' touch' : ''}`}>
       <div ref={hostRef} className="game-host" />
       {phase.kind === 'loading' && (
         <div
@@ -81,35 +96,48 @@ export function SandboxPage({ onExit }: { onExit: () => void }) {
         </div>
       )}
       {phase.kind === 'ready' && !locked && (
-        <div className="game-overlay" onClick={() => sandboxRef.current?.requestLock()}>
+        <div
+          className="game-overlay"
+          onClick={() => {
+            if (performance.now() - unlockedAt.current > 500) sandboxRef.current?.requestLock();
+          }}
+        >
           <p className="eyebrow">SOLO SANDBOX · MAP 01</p>
-          <h2>Click to play</h2>
-          <ul className="keys">
-            <li>
-              <kbd>W A S D</kbd> move
-            </li>
-            <li>
-              <kbd>Shift</kbd> sprint
-            </li>
-            <li>
-              <kbd>Ctrl</kbd> / <kbd>C</kbd> crouch
-            </li>
-            <li>
-              <kbd>Space</kbd> jump
-            </li>
-            <li>
-              <kbd>Mouse 1</kbd> fire (hold for auto)
-            </li>
-            <li>
-              <kbd>R</kbd> reload
-            </li>
-            <li>
-              <kbd>H</kbd> dev: take 10 damage
-            </li>
-            <li>
-              <kbd>Esc</kbd> release mouse
-            </li>
-          </ul>
+          <h2>{touch ? 'Tap to play' : 'Click to play'}</h2>
+          {touch ? (
+            <ul className="keys">
+              <li>Left thumb: move (push fully forward to sprint)</li>
+              <li>Right thumb: drag to look · buttons: Fire, Jump, Crouch, Reload, Use</li>
+              <li>Use = hold to plant / defuse / cut power · ❙❙ pauses</li>
+            </ul>
+          ) : (
+            <ul className="keys">
+              <li>
+                <kbd>W A S D</kbd> move
+              </li>
+              <li>
+                <kbd>Shift</kbd> sprint
+              </li>
+              <li>
+                <kbd>Ctrl</kbd> / <kbd>C</kbd> crouch
+              </li>
+              <li>
+                <kbd>Space</kbd> jump
+              </li>
+              <li>
+                <kbd>Mouse 1</kbd> fire (hold for auto)
+              </li>
+              <li>
+                <kbd>R</kbd> reload
+              </li>
+              <li>
+                <kbd>H</kbd> dev: take 10 damage
+              </li>
+              <li>
+                <kbd>Esc</kbd> release mouse
+              </li>
+            </ul>
+          )}
           <button
             className="btn"
             onClick={(e) => {

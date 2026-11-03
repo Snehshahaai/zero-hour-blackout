@@ -8,7 +8,13 @@ const PORT = 24000 + Math.floor(Math.random() * 4000);
 const server = createGameServer(
   { CLIENT_ORIGINS: ['http://localhost:5173'] },
   {
-    roundRules: { freezeSeconds: 0.3, roundSeconds: 60, matchEndSeconds: 0.5 },
+    roundRules: {
+      freezeSeconds: 0.3,
+      roundSeconds: 60,
+      matchEndSeconds: 0.5,
+      plantSeconds: 1,
+      fuseSeconds: 4,
+    },
     coopRules: { briefingSeconds: 0.3, timeLimitSeconds: 1.5, resultSeconds: 0.4 },
     weather: 'rain',
     reconnectGraceSeconds: 1,
@@ -369,4 +375,90 @@ describe('MatchRoom (end-to-end)', () => {
     await new Promise((r) => setTimeout(r, 2500));
     await expect(joinCode(code, 'Late')).rejects.toBeDefined(); // the room no longer exists
   }, 15000);
+
+  it('practice vs bot: a solo human starts a 1v1, a bot fills the other side, rounds run, the bot moves', async () => {
+    const host = await create('Solo', {
+      format: '1v1',
+      fillBots: true,
+      botDifficulty: 'hard',
+      visibility: 'public',
+    });
+    await until(() => host.state.roomCode === host.roomId, 'state');
+    expect(host.state.fillBots).toBe(true);
+    expect(host.state.botDifficulty).toBe('hard');
+    expect(host.state.visibility).toBe('private'); // practice rooms never enter public matchmaking
+    expect(host.state.mode).toBe('competitive');
+
+    host.send('start', {}); // no opponent present, no ready needed
+    await until(() => host.state.phase === 'inMatch', 'inMatch', 7000);
+    await until(() => host.state.sim.size === 2, 'human + bot replicated');
+    const sim = () =>
+      Object.values(
+        host.state.sim.toJSON() as Record<
+          string,
+          {
+            id: string;
+            isBot: boolean;
+            team: string;
+            x: number;
+            z: number;
+            name: string;
+            alive: boolean;
+          }
+        >,
+      );
+    const bot = sim().find((p) => p.isBot);
+    expect(bot).toBeDefined();
+    expect(bot?.team).toBe('defenders'); // the human is on attackers, the bot fills defenders
+    expect(bot?.name).toMatch(/^Bot /);
+    expect(host.state.roundNumber).toBe(1);
+
+    await until(() => host.state.roundPhase === 'live', 'round live', 5000);
+    const x0 = sim().find((p) => p.isBot)?.x ?? 0;
+    const z0 = sim().find((p) => p.isBot)?.z ?? 0;
+    await new Promise((r) => setTimeout(r, 2500));
+    const b1 = sim().find((p) => p.isBot);
+    expect(Math.hypot((b1?.x ?? 0) - x0, (b1?.z ?? 0) - z0)).toBeGreaterThan(2); // it patrols/guards, not frozen
+  }, 20000);
+
+  it('practice vs bot with a friend: bots only fill the slots humans left empty (2v2)', async () => {
+    const host = await create('Host', { format: '2v2', fillBots: true });
+    const friend = await joinCode(host.roomId, 'Friend');
+    await until(() => players(host).length === 2, 'two humans');
+    friend.send('setReady', { ready: true });
+    await until(() => playerOf(host, friend.sessionId).ready, 'friend ready');
+    host.send('start', {});
+    await until(
+      () => host.state.phase === 'inMatch' && host.state.sim.size === 4,
+      '2 humans + 2 bots',
+      7000,
+    );
+    const all = Object.values(host.state.sim.toJSON() as Record<string, { isBot: boolean }>);
+    expect(all.filter((p) => p.isBot)).toHaveLength(2);
+  }, 20000);
+
+  it('practice vs bot: with the human on defence, the bot attacker walks to a site and plants through the live room', async () => {
+    const host = await create('Defender', { format: '1v1', fillBots: true });
+    await until(() => host.state.roomCode === host.roomId, 'state');
+    host.send('setTeam', { team: 'defenders' }); // human defends, so the bot is the attacker
+    await until(() => playerOf(host, host.sessionId).team === 'defenders', 'switched to defenders');
+    host.send('start', {});
+    await until(() => host.state.phase === 'inMatch', 'inMatch', 7000);
+    await until(() => host.state.sim.size === 2, 'human + bot');
+    const bot = () =>
+      Object.values(
+        host.state.sim.toJSON() as Record<string, { isBot: boolean; side: string }>,
+      ).find((p) => p.isBot);
+    expect(bot()?.side).toBe('attackers');
+
+    // Keep the human out of the way (idle at the defender spawn) and wait for the bot to do its job.
+    let sawPlant = false;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 50000 && !sawPlant && host.state.scoreAttackers === 0) {
+      if (host.state.bombState === 'planted') sawPlant = true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    // Either it planted (bomb state seen) or it already won the round by eliminating the idle human.
+    expect(sawPlant || host.state.scoreAttackers >= 1).toBe(true);
+  }, 70000);
 });

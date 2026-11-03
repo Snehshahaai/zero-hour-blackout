@@ -64,11 +64,13 @@ export function canStart(
   hostId: string,
   requesterId: string,
   mode: GameMode = 'competitive',
+  fillBots = false,
 ): RuleResult {
   if (requesterId !== hostId) return fail('not_host', 'Only the host can start the match.');
   const all = [...players]; // callers may pass a one-shot iterator (e.g. a Map's values())
   const present = all.filter((p) => p.connected);
-  if (mode === 'cooperative') {
+  if (mode === 'cooperative' || fillBots) {
+    // Cooperative, or competitive against bots that fill the empty slots: no team-balance rule.
     if (present.length === 0) return fail('need_players', 'No operators present.');
     if (present.some((p) => p.id !== hostId && !p.ready))
       return fail('not_ready', 'Waiting for all operators to be ready.');

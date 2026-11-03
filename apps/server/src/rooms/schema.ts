@@ -62,6 +62,8 @@ export const LobbyState = schema(
     mode: t.string().default('competitive'),
     format: t.string().default('1v1'),
     visibility: t.string().default('private'),
+    fillBots: t.boolean().default(false),
+    botDifficulty: t.string().default('normal'),
     hostId: t.string().default(''),
     phase: t.string().default('lobby'),
     /** Seconds left while phase is "starting". */

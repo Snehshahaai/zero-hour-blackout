@@ -4,7 +4,7 @@
 
 Browser-based tactical multiplayer FPS. React + TypeScript + Vite, Three.js, Colyseus (authoritative server), Zod.
 
-**Status: feature-complete first version (phases 1-8) with release tooling (phase 9). Not yet deployed or tested on real GPUs/other browsers; see [docs/CHECKLIST.md](docs/CHECKLIST.md) for exactly what is and is not done.**
+**Status: feature-complete first version with release tooling, touch controls for phones/tablets, and Practice vs Bot (a full competitive match against AI). Not yet deployed or tested on real GPUs/other browsers; see [docs/CHECKLIST.md](docs/CHECKLIST.md) for exactly what is and is not done.**
 
 ## Requirements
 

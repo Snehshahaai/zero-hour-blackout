@@ -29,6 +29,16 @@ Results vary run to run (random walkers collide differently). Cost grows faster 
 because of player-vs-player collision queries and per-shot lag-compensation rewinds.
 One optimisation was applied: the physics world is stepped once per tick, not once per player.
 
+### Practice matches against bots (`apps/server/scripts/botbench.ts`, simulation only)
+
+| Layout                 | mean tick | p99 tick | rooms per core (mean) |
+| ---------------------- | --------- | -------- | --------------------- |
+| 1 human + 1 bot (1v1)  | 0.07 ms   | 0.38 ms  | ~250                  |
+| 4 bots (2v2)           | 0.13 ms   | 0.75 ms  | ~130                  |
+| 1 human + 9 bots (5v5) | 0.20 ms   | 0.96 ms  | ~84                   |
+
+Excludes network encoding. Bot cost is dominated by line-of-sight raycasts (each bot checks each enemy each tick).
+
 ## Network
 
 ~4 KiB/s per client downstream at 20 Hz state updates for 2v2 (schema deltas); upstream is ~60 small

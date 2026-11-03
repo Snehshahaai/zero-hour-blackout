@@ -27,6 +27,7 @@ export const roomCodeSchema = z
   .regex(roomCodePattern, 'Invalid room code');
 
 export const roomVisibilitySchema = z.enum(['public', 'private']);
+export const botDifficultySchema = z.enum(['easy', 'normal', 'hard']);
 export const lobbyPhaseSchema = z.enum(['lobby', 'starting', 'inMatch']);
 
 /** Options a client sends when creating (or quick-joining) a room. Validated server-side. */
@@ -35,6 +36,9 @@ export const createRoomOptionsSchema = z.object({
   mode: gameModeSchema.default('competitive'),
   format: matchFormatSchema.default('1v1'),
   visibility: roomVisibilitySchema.default('private'),
+  /** Competitive only: AI players fill every empty slot (e.g. 1v1 against a bot). */
+  fillBots: z.boolean().default(false),
+  botDifficulty: botDifficultySchema.default('normal'),
 });
 export type CreateRoomOptions = z.infer<typeof createRoomOptionsSchema>;
 
@@ -73,6 +77,8 @@ export const lobbySnapshotSchema = z.object({
   mode: gameModeSchema,
   format: matchFormatSchema,
   visibility: roomVisibilitySchema,
+  fillBots: z.boolean().default(false),
+  botDifficulty: botDifficultySchema.default('normal'),
   hostId: z.string(),
   phase: lobbyPhaseSchema,
   countdown: z.number(),

@@ -129,6 +129,32 @@ NOT done (needs you, or is a bigger decision):
 - [ ] Anti-cheat beyond server authority (aim/ESP), moderation tools, bans
 - [ ] Legal/licensing review of the (all-procedural, original) assets; privacy policy; analytics consent
 
+## Phase 10: Mobile/tablet controls and competitive bots — DONE (verified in emulation, not on real devices)
+
+**Practice vs Bot (full competitive mode against AI)**
+
+- [x] Rooms can `fillBots`: AI fills every empty slot, so 1v1 vs a bot is the basic case (2v2 with bots, or friends + bots, also work). Solo host starts alone; no team-balance rule; practice rooms are always private.
+- [x] Bots play the _whole_ mode: attackers walk to a site and plant, then guard it; defenders guard a site, rush a planted bomb and defuse; they fight whenever they see an enemy (line of sight + field of view + reaction time + aim error), hear gunfire, and re-plan routes when a door closes. Sides swap at halftime and the bots follow their current side.
+- [x] Difficulty Easy / Normal / Hard changes reaction time, aim error, turn speed and burst pauses only (measured time-to-first-hit 2.3 s / 0.5 s / 0.3 s); bots never get extra vision, speed or perfect aim
+- [x] Server cost is small: ~0.07 ms/tick for a 1v1 practice room, ~0.2 ms for 5v5 with 9 bots (simulation only)
+- [x] Tests: 7 `CompetitiveBots` tests (plant, defuse, detonation-win, guard, fight, difficulty order, no seeing through walls), lobby rules, and 3 live-room tests (1v1 vs bot starts and the bot moves; 2v2 with a friend fills only empty slots; bot attacker plants through the real room)
+
+**Touch controls (phones and tablets)**
+
+- [x] On-screen controls: floating move stick (push fully forward to sprint; firing cancels the sprint), drag-to-look, Fire / Jump / Crouch (toggle) / Reload / Use buttons, pause button, Scores button; portrait warning ("rotate to landscape"); best-effort fullscreen + landscape lock
+- [x] Works in sandbox, competitive, practice and co-op (same input layer: game code unchanged). Multi-touch via Pointer Events.
+- [x] Automatic (coarse-pointer) or manual choice in Settings > Controls; touch devices default to the Low graphics preset; pinch/double-tap zoom disabled; touch HUD layout (thumbs own the bottom corners)
+- [x] Layout checked on emulated iPhone and iPad in both orientations (no horizontal overflow); tablet-portrait overflow and phone margins fixed
+- [x] Browser-verified with real multi-touch events (Chromium device emulation): moving, stopping, looking, firing while holding the stick, pausing, a full Practice vs Bot match played by touch only
+- [ ] NOT verified on real phones/tablets: iOS Safari (no fullscreen on iPhone, audio unlock quirks), Android Chrome, real GPU performance and thermals, touch ergonomics/button sizes, aim-assist (none: touch aim is harder than a mouse; use Easy bots or co-op)
+- [ ] Not done: configurable button layout/sensitivity, gamepad support, haptics, a lighter weapon/viewmodel for small screens
+
+Bugs found and fixed while building this:
+
+- Bots could not move in a live room: rebuilding the nav graph raycast through _player capsules_ and cut every edge around the spawn (unit tests never rebuilt with characters present). Walkability now ignores characters.
+- Pausing on touch resumed instantly: the tap's `click` hit the overlay that appeared under the finger (now ignored for 500 ms)
+- A fully pushed stick sprinted, and sprint blocks firing, so players could not shoot while "running": firing now cancels sprint on touch
+
 ## Next steps (suggested order)
 
 1. Deploy to a staging environment (see docs/DEPLOYMENT.md) and play real matches with friends.

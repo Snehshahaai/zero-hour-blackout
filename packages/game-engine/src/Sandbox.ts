@@ -5,6 +5,7 @@ import { MOVEMENT } from './entities/movement.ts';
 import { PlayerController } from './entities/PlayerController.ts';
 import { TargetDummy } from './entities/TargetDummy.ts';
 import { InputManager } from './input/InputManager.ts';
+import { TouchControls } from './input/TouchControls.ts';
 import { Hitscan, viewDirection, type Point3 } from './physics/Hitscan.ts';
 import { FIXED_DT, initPhysics, PhysicsWorld } from './physics/PhysicsWorld.ts';
 import { Effects } from './rendering/Effects.ts';
@@ -51,6 +52,8 @@ export interface HudState {
 export interface Sandbox {
   readonly locked: boolean;
   requestLock(): void;
+  /** Pause: release the mouse / hide the touch controls. */
+  releaseLock(): void;
   onLockChange(l: (locked: boolean) => void): () => void;
   /** Subscribes to HUD changes; the current state is delivered immediately. */
   onHud(l: (s: HudState) => void): () => void;
@@ -73,6 +76,7 @@ export async function createSandbox(
   canvas: HTMLCanvasElement,
   quality: GraphicsQuality,
   onProgress?: ProgressFn,
+  options: { touch?: boolean } = {},
 ): Promise<Sandbox> {
   await initPhysics();
   const gr = new GameRenderer(canvas, quality);
@@ -95,7 +99,13 @@ export async function createSandbox(
   fpCamera.yaw = -Math.PI / 2; // face east, into the map
   gr.camera.fov = 75;
   gr.camera.updateProjectionMatrix();
-  const input = new InputManager(canvas);
+  const pause = { fn: () => undefined as void };
+  const touch =
+    options.touch && canvas.parentElement
+      ? new TouchControls(canvas.parentElement, () => pause.fn())
+      : null;
+  const input = new InputManager(canvas, touch);
+  pause.fn = () => input.exitLock();
   const audio = new AudioEngine();
   const effects = new Effects(gr.scene);
   const viewModel = new ViewModel(gr.viewScene);
@@ -339,6 +349,7 @@ export async function createSandbox(
       audio.unlock(); // needs a user gesture; the click that requests pointer lock is one
       input.requestLock();
     },
+    releaseLock: () => input.exitLock(),
     onLockChange: (l) => input.onLockChange(l),
     onHud(l) {
       hudListeners.add(l);
@@ -368,6 +379,7 @@ export async function createSandbox(
     dispose() {
       loop.stop();
       input.dispose();
+      touch?.dispose();
       audio.dispose();
       hudListeners.clear();
       for (const t of targets) {

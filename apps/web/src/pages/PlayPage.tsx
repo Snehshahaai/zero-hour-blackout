@@ -1,5 +1,6 @@
 import {
   ENABLED_MATCH_FORMATS,
+  type BotDifficulty,
   ROOM_CODE_LENGTH,
   playerNameSchema,
   roomCodeSchema,
@@ -22,6 +23,7 @@ export function PlayPage() {
   const [name, setName] = useState(loadPlayerName);
   const [format, setFormat] = useState<MatchFormat>('1v1');
   const [code, setCode] = useState(codeFromHash);
+  const [difficulty, setDifficulty] = useState<BotDifficulty>('normal');
 
   const nameCheck = playerNameSchema.safeParse(name);
   const codeCheck = roomCodeSchema.safeParse(code);
@@ -112,6 +114,49 @@ export function PlayPage() {
           </div>
         </div>
       </div>
+
+      <section className="coop-box practice-box" aria-labelledby="practice-title">
+        <p className="eyebrow" id="practice-title">
+          PRACTICE VS BOT
+        </p>
+        <h3>Full competitive match against AI</h3>
+        <p className="note">
+          Rounds, bomb plant and defuse, side swap and scoring, exactly like online play. Bots fill
+          every empty slot (a {format} here). Pick the Format above, then a difficulty.
+        </p>
+        <div role="radiogroup" aria-label="Bot difficulty" className="segmented">
+          {(['easy', 'normal', 'hard'] as const).map((d) => (
+            <button
+              key={d}
+              role="radio"
+              aria-checked={difficulty === d}
+              className="segment"
+              onClick={() => setDifficulty(d)}
+            >
+              {d}
+            </button>
+          ))}
+        </div>
+        <button
+          className="action action-live"
+          disabled={!validName || busy}
+          onClick={() =>
+            run(async (n) => {
+              const ok = await network.createRoom(n, format, 'private', 'competitive', {
+                fillBots: true,
+                botDifficulty: difficulty,
+              });
+              if (ok) network.start(); // nobody else needs to be ready: the server validates the start
+              return ok;
+            })
+          }
+        >
+          <span className="action-label">Start Practice Match</span>
+          <span className="action-hint">
+            {format} vs bots · {difficulty} · first to 4 rounds, sides swap
+          </span>
+        </button>
+      </section>
 
       <section className="coop-box" aria-labelledby="coop-title">
         <p className="eyebrow" id="coop-title">

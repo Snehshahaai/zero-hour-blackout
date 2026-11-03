@@ -1,5 +1,6 @@
 import { createMatchGame, type MatchGame, type MatchHud } from '@zhb/game-engine';
 import { useEffect, useRef, useState } from 'react';
+import { useControlMode } from '../hooks/useControlMode.ts';
 import { useGraphicsQuality } from '../hooks/useGraphicsQuality.ts';
 import { network } from '../services/network.ts';
 
@@ -13,12 +14,21 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
   const gameRef = useRef<MatchGame | null>(null);
   const [quality] = useGraphicsQuality();
   const initialQuality = useRef(quality);
+  const { touch } = useControlMode();
+  const initialTouch = useRef(touch);
   const [phase, setPhase] = useState<Phase>({
     kind: 'loading',
     fraction: 0,
     label: 'Joining match',
   });
   const [locked, setLocked] = useState(false);
+  // The tap that pauses also produces a `click` on the overlay that appears under the finger; ignore
+  // overlay clicks right after unlocking or the game would resume instantly.
+  const unlockedAt = useRef(0);
+  const onLock = (l: boolean) => {
+    if (!l) unlockedAt.current = performance.now();
+    setLocked(l);
+  };
   const [hud, setHud] = useState<MatchHud | null>(null);
   const [showScores, setShowScores] = useState(false);
   const [dbg, setDbg] = useState('');
@@ -36,13 +46,19 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
     host.appendChild(canvas);
     let cancelled = false;
     const unsubscribers: (() => void)[] = [];
-    createMatchGame(canvas, initialQuality.current, bridge, (fraction, label) => {
-      if (!cancelled) setPhase({ kind: 'loading', fraction, label });
-    })
+    createMatchGame(
+      canvas,
+      initialQuality.current,
+      bridge,
+      (fraction, label) => {
+        if (!cancelled) setPhase({ kind: 'loading', fraction, label });
+      },
+      { touch: initialTouch.current },
+    )
       .then((g) => {
         if (cancelled) return g.dispose();
         gameRef.current = g;
-        unsubscribers.push(g.onLockChange(setLocked), g.onHud(setHud));
+        unsubscribers.push(g.onLockChange(onLock), g.onHud(setHud));
         setPhase({ kind: 'ready' });
       })
       .catch((e: unknown) => {
@@ -91,7 +107,7 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
   }, []);
 
   return (
-    <div className="game">
+    <div className={`game${touch ? ' touch' : ''}`}>
       <div ref={hostRef} className="game-host" />
       {phase.kind === 'loading' && (
         <div
@@ -114,19 +130,32 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
         </div>
       )}
       {phase.kind === 'ready' && !locked && !hud?.result && (
-        <div className="game-overlay" onClick={() => gameRef.current?.requestLock()}>
+        <div
+          className="game-overlay"
+          onClick={() => {
+            if (performance.now() - unlockedAt.current > 500) gameRef.current?.requestLock();
+          }}
+        >
           <p className="eyebrow">MATCH IN PROGRESS</p>
-          <h2>Click to play</h2>
-          <ul className="keys">
-            <li>
-              <kbd>W A S D</kbd> move · <kbd>Shift</kbd> sprint · <kbd>Ctrl</kbd> crouch ·{' '}
-              <kbd>Space</kbd> jump
-            </li>
-            <li>
-              <kbd>Mouse 1</kbd> fire · <kbd>R</kbd> reload · <kbd>E</kbd> hold to plant / defuse /
-              cut power · <kbd>Tab</kbd> scores
-            </li>
-          </ul>
+          <h2>{touch ? 'Tap to play' : 'Click to play'}</h2>
+          {touch ? (
+            <ul className="keys">
+              <li>Left thumb: move (push fully forward to sprint)</li>
+              <li>Right thumb: drag to look · buttons: Fire, Jump, Crouch, Reload, Use</li>
+              <li>Use = hold to plant / defuse / cut power · ❙❙ pauses</li>
+            </ul>
+          ) : (
+            <ul className="keys">
+              <li>
+                <kbd>W A S D</kbd> move · <kbd>Shift</kbd> sprint · <kbd>Ctrl</kbd> crouch ·{' '}
+                <kbd>Space</kbd> jump
+              </li>
+              <li>
+                <kbd>Mouse 1</kbd> fire · <kbd>R</kbd> reload · <kbd>E</kbd> hold to plant / defuse
+                / cut power · <kbd>Tab</kbd> scores
+              </li>
+            </ul>
+          )}
           <button
             className="btn"
             onClick={(e) => {
@@ -140,6 +169,15 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
       )}
       {phase.kind === 'ready' && locked && hud?.alive && (
         <div className="crosshair" aria-hidden="true" />
+      )}
+      {touch && phase.kind === 'ready' && locked && (
+        <button
+          className="touch-scores"
+          aria-pressed={showScores}
+          onClick={() => setShowScores((v) => !v)}
+        >
+          Scores
+        </button>
       )}
       {dbg && (
         <pre className="debug" data-testid="match-debug">

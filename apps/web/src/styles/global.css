@@ -1035,3 +1035,151 @@ input[aria-invalid='true'] {
 .support-warning {
   margin: 12px 28px 0;
 }
+
+/* ---- touch devices ---------------------------------------------------------------------- */
+html,
+body {
+  overscroll-behavior: none;
+}
+.game {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.settings-sub {
+  font-size: 24px !important;
+  margin-top: 32px !important;
+}
+.touch-scores {
+  position: absolute;
+  left: 64px;
+  top: 12px;
+  z-index: 5;
+  min-width: 64px;
+  min-height: 40px;
+  background: rgb(11 13 15 / 0.65);
+  border: 1px solid var(--line);
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.touch-scores[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* The thumbs own the bottom corners, so the HUD moves up and shrinks on touch. */
+.game.touch .hud-big {
+  font-size: 26px;
+}
+.game.touch .hud-big small {
+  font-size: 13px;
+}
+.game.touch .hud-health {
+  left: 12px;
+  bottom: auto;
+  top: 108px;
+  min-width: 96px;
+  gap: 3px;
+}
+.game.touch .hud-ammo {
+  right: 12px;
+  bottom: auto;
+  top: 8px;
+}
+.game.touch .teammates {
+  top: 190px;
+  left: 12px;
+  font-size: 11px;
+  min-width: 100px;
+}
+.game.touch .killfeed {
+  right: 12px;
+  top: 104px;
+  font-size: 11px;
+}
+.game.touch .roundbar {
+  top: 6px;
+}
+.game.touch .roundbar-meta {
+  display: none;
+}
+.game.touch .score-mine,
+.game.touch .score-theirs {
+  font-size: 22px;
+}
+.game.touch .roundbar-clock {
+  font-size: 16px;
+}
+.game.touch .prompt {
+  bottom: 40%;
+  font-size: 12px;
+  min-width: 200px;
+  padding: 8px 12px;
+}
+.game.touch .scoreboard {
+  top: 12%;
+  min-width: 320px;
+  font-size: 12px;
+}
+.game.touch .debug {
+  display: none;
+}
+.game.touch .game-overlay h2 {
+  font-size: 30px;
+}
+@media (max-height: 480px) {
+  .game-overlay {
+    gap: 6px;
+  }
+  .game-overlay .keys {
+    margin: 2px 0;
+    font-size: 11px;
+    gap: 2px;
+  }
+  .eliminated {
+    font-size: 28px;
+    top: 30%;
+  }
+}
+
+/* Tablets in portrait (~800 px) are wider than the phone breakpoint but too narrow for the full bar. */
+@media (max-width: 1000px) {
+  .topbar {
+    gap: 14px;
+    padding: 0 14px;
+    overflow-x: auto;
+  }
+  .nav {
+    gap: 0;
+  }
+  .nav-item {
+    padding-left: 9px;
+    padding-right: 9px;
+    white-space: nowrap;
+  }
+  .status {
+    white-space: nowrap;
+    font-size: 10px;
+  }
+}
+
+/* Phones: reclaim the side margins and give the room-code field room for six letters. */
+@media (max-width: 800px) {
+  .panel,
+  .panel-wide {
+    padding: 24px 16px;
+  }
+  .code-input {
+    width: 11.5ch;
+  }
+  .play-actions {
+    grid-template-columns: 1fr;
+  }
+  .coop-box {
+    max-width: none;
+  }
+  .field {
+    max-width: none;
+  }
+}

@@ -167,6 +167,13 @@ export class MatchSim {
     return p;
   }
 
+  /** Adds an AI player at its side's normal spawn (competitive bots; round start re-places everyone). */
+  addSpawnBot(id: string, name: string, team: Team): SimPlayer {
+    const p = this.addPlayer(id, name, team);
+    p.isBot = true;
+    return p;
+  }
+
   /** Straight walkability between two floor points (used to build the nav graph). */
   segmentClear(ax: number, az: number, bx: number, bz: number): boolean {
     return this.physics.segmentClear(ax, az, bx, bz);
