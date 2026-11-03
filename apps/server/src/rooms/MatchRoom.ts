@@ -243,12 +243,12 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       sim.addPlayer(p.id, p.name, p.team as Team);
       this.state.sim.set(p.id, new SimPlayerSchema());
     }
-    // Respawns: co-op shares a pool of 3 per objective; 1v1 deathmatch always respawns;
+    // Respawns: co-op gives every operator their own 3 per objective; 1v1 deathmatch always respawns;
     // 2v2 rounds have none (you stay down until the next round, spectating a teammate).
     const deathmatch = this.state.mode === 'competitive' && this.state.format === '1v1';
     if (this.state.mode === 'cooperative')
       sim.setLives({
-        scope: 'team',
+        scope: 'player',
         count: MatchRoom.coopLives,
         delay: MatchRoom.respawnDelay,
         bots: false,

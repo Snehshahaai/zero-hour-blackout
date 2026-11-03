@@ -157,7 +157,22 @@ describe('co-op pool', () => {
     kill(sim, 'D', 'A');
     kill(sim, 'D', 'B');
     expect(sim.teamLives.attackers).toBe(1);
-    sim.refillTeamLives();
+    sim.refillLives();
     expect(sim.teamLives.attackers).toBe(3);
+  });
+});
+
+describe('co-op per-player lives', () => {
+  it('each operator spends only their own respawns and all refill at the next objective', () => {
+    const sim = make('player');
+    kill(sim, 'D', 'A');
+    kill(sim, 'D', 'A');
+    run(sim, 3.2);
+    kill(sim, 'D', 'A');
+    run(sim, 3.2);
+    expect(sim.livesFor(sim.players.get('A') as never)).toBe(0);
+    expect(sim.livesFor(sim.players.get('B') as never)).toBe(3); // untouched
+    sim.refillLives();
+    expect(sim.livesFor(sim.players.get('A') as never)).toBe(3);
   });
 });

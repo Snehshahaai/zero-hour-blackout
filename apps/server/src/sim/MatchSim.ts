@@ -125,10 +125,12 @@ export class MatchSim {
     for (const p of this.players.values()) p.livesLeft = rules.scope === 'player' ? rules.count : 0;
   }
 
-  /** Back to the full shared pool (co-op refills it at every objective). */
-  refillTeamLives(): void {
+  /** Everyone back to the full allowance (co-op refills at every objective). */
+  refillLives(): void {
     if (this.lives.scope === 'team')
       this.teamLives.attackers = this.teamLives.defenders = this.lives.count;
+    else if (this.lives.scope === 'player')
+      for (const p of this.players.values()) p.livesLeft = this.lives.count;
   }
 
   /** Lives a player can still draw on (their own, or their team's shared pool). */

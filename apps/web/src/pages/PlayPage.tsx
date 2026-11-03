@@ -165,8 +165,8 @@ export function PlayPage() {
         <h3>Secure the Facility</h3>
         <p className="note">
           1–4 operators against server-controlled hostiles. Clear the patrols, then hold the
-          generator room and the loading dock. Your team shares 3 respawns per objective; when you
-          go down you spectate a teammate.
+          generator room and the loading dock. You get 3 respawns of your own per objective; when
+          you go down you spectate a teammate.
         </p>
         <button
           className="action action-live"
