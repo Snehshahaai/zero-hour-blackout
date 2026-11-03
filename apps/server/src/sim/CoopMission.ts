@@ -173,6 +173,7 @@ export class CoopMission {
   private completeObjective(): void {
     this.progress = 0;
     this.objective++;
+    this.sim.refillTeamLives(); // 3 fresh respawns for the next objective
     // Checkpoint: fallen operators are brought back to the start.
     for (const p of this.sim.players.values()) {
       if (!p.isBot && !p.alive) this.sim.reviveAtSpawn(p.id);
@@ -195,7 +196,7 @@ export class CoopMission {
 
   private operatorsAlive(): number {
     let n = 0;
-    for (const p of this.sim.players.values()) if (!p.isBot && p.alive) n++;
+    for (const p of this.sim.players.values()) if (!p.isBot && (p.alive || p.pendingRespawn)) n++;
     return n;
   }
 

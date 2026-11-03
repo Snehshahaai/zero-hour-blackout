@@ -6,7 +6,6 @@ import type { TouchControls } from './TouchControls.ts';
  */
 export class InputManager {
   private touchActive = false;
-  private prevTouchFire = false;
   private readonly down = new Set<string>();
   private mouseDx = 0;
   private mouseDy = 0;
@@ -88,9 +87,7 @@ export class InputManager {
 
   /** True once per primary-button press (edge). */
   consumeFirePressed(): boolean {
-    const touchFire = this.touch?.state.fire ?? false;
-    const touchEdge = touchFire && !this.prevTouchFire; // a press, not a held button
-    this.prevTouchFire = touchFire;
+    const touchEdge = this.touch?.state.consumeFireLatch() ?? false; // a press, not a held button
     const f = this.firePressed || touchEdge;
     this.firePressed = false;
     return f;

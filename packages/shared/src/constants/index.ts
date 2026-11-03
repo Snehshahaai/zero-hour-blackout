@@ -42,6 +42,10 @@ export const ROUND_RULES = {
   /** A plant is allowed within (site radius + this) metres of the site centre. */
   plantRadiusBonus: 1,
   defuseRange: 2.5,
+  /** 1v1 deathmatch: first to this many kills wins (0 = normal bomb rounds). */
+  deathmatchKills: 0,
+  /** Deathmatch time cap; the leader wins when it runs out. */
+  deathmatchSeconds: 900,
 } as const;
 export type RoundRules = { -readonly [K in keyof typeof ROUND_RULES]: number };
 

@@ -41,6 +41,8 @@ export const SimPlayerSchema = schema(
     deaths: t.uint16().default(0),
     /** Last input sequence the server has applied (for client reconciliation). */
     ackSeq: t.int32().default(-1),
+    livesLeft: t.uint8().default(0),
+    respawnIn: t.float32().default(0),
   },
   'SimPlayer',
 );
@@ -82,6 +84,7 @@ export const LobbyState = schema(
     bombState: t.string().default('none'),
     bombSite: t.string().default(''),
     matchWinner: t.string().default(''),
+    deathmatchKills: t.uint8().default(0),
     tick: t.uint32().default(0),
     timeMs: t.float64().default(0),
     sim: t.map(SimPlayerSchema),

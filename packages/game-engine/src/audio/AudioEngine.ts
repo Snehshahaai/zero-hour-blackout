@@ -33,6 +33,9 @@ function lcg(seed: number): () => number {
  * through a single master gain. Spatial audio arrives in Phase 7.
  * The AudioContext must be created from a user gesture: call `unlock()` on click.
  */
+/** Concurrent positional voices allowed before new ones are skipped. */
+const MAX_POSITIONAL_VOICES = 10;
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -65,6 +68,8 @@ export class AudioEngine {
     this.volume = Math.min(1, Math.max(0, v));
     if (this.master) this.master.gain.value = this.volume;
   }
+
+  private voices = 0;
 
   play(name: SoundName, gain = 1, rate = 1): void {
     const ctx = this.ctx;
@@ -116,8 +121,15 @@ export class AudioEngine {
     const ctx = this.ctx;
     const buf = this.buffers.get(name);
     if (!ctx || !this.master || !buf || ctx.state !== 'running') return;
+    // Each positional voice is a panner (HRTF is a convolution) plus a reverb send; a firefight
+    // can spawn dozens at once, which is what stalls weak phones. Past the cap, drop the voice.
+    if (this.voices >= MAX_POSITIONAL_VOICES) return;
+    this.voices++;
     const occ = occlusionFilter(opts.occluded ?? false);
     const src = ctx.createBufferSource();
+    src.onended = () => {
+      this.voices = Math.max(0, this.voices - 1);
+    };
     src.buffer = buf;
     src.playbackRate.value = 0.97 + Math.random() * 0.06;
     const lp = ctx.createBiquadFilter();

@@ -40,6 +40,7 @@ export class TouchState {
   private lookX = 0;
   private lookY = 0;
   private jump = false;
+  private fireLatch = false;
   private reload = false;
   /** Pixels of finger travel -> mouse-equivalent pixels (touch needs more gain than a mouse). */
   lookGain = 1.9;
@@ -102,7 +103,20 @@ export class TouchState {
     }
   }
 
+  /** Fire button went down since the last call: a tap shorter than one tick still counts. */
+  latchFire(): void {
+    this.fire = true;
+    this.fireLatch = true;
+  }
+
+  consumeFireLatch(): boolean {
+    const f = this.fireLatch;
+    this.fireLatch = false;
+    return f;
+  }
+
   reset(): void {
+    this.fireLatch = false;
     this.moveX = this.moveY = this.magnitude = 0;
     this.fire = this.crouch = this.interact = false;
     this.lookX = this.lookY = 0;

@@ -73,7 +73,10 @@ export class CompetitiveBots {
   }
 
   /** New round: attackers pick a site; defenders spread across the two sites. */
+  private readonly fallen = new Set<string>();
+
   onRoundStart(): void {
+    this.fallen.clear();
     this.attackSite = this.rand() < 0.5 ? 'A' : 'B';
     let flip = this.rand() < 0.5;
     for (const id of this.brains.keys()) {
@@ -96,13 +99,22 @@ export class CompetitiveBots {
     }
     for (const [id, brain] of this.brains) {
       const bot = this.sim.players.get(id);
-      if (!bot?.alive) continue;
+      if (!bot?.alive) {
+        this.fallen.add(id);
+        continue;
+      }
+      if (this.fallen.delete(id)) brain.setGoal(null); // respawned: plan the route from the spawn
       brain.setGoal(this.goalFor(bot));
       brain.step();
     }
   }
 
   private goalFor(bot: SimPlayer): BotGoal {
+    if (this.rounds.deathmatch) {
+      // Deathmatch: roam the whole map, hunting. Bots walk opposite directions so they meet.
+      const loop = [...GUARD_ROUTES.A, ...GUARD_ROUTES.B];
+      return { kind: 'route', nodes: bot.team === 'attackers' ? loop : loop.reverse() };
+    }
     const bomb = this.rounds.bomb;
     if (bot.side === 'attackers') {
       if (!bomb.planted) return this.siteGoal('plant', this.attackSite);

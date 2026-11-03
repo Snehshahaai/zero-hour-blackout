@@ -68,6 +68,10 @@ export interface SimPlayer {
   yaw: number;
   pitch: number;
   respawnIn: number;
+  /** Dead, but a respawn is already paid for and counting down. */
+  pendingRespawn: boolean;
+  /** Respawns this player may still use (per-player scope). */
+  livesLeft: number;
   queue: InputMessage[];
   lastInput: InputMessage | null;
   /** Inputs this player may still consume: +1 per server tick, capped at MAX_CREDIT. */
@@ -83,6 +87,15 @@ type Positions = Map<string, Point3>;
  * Authoritative match simulation. Pure game logic (no networking): the room feeds it
  * validated inputs and reads state/events back. One `step()` = one 1/60 s tick.
  */
+export interface LifeRules {
+  scope: 'none' | 'player' | 'team';
+  count: number;
+  /** Seconds between dying and coming back. */
+  delay: number;
+  /** Do AI players draw on the allowance too (competitive bots yes, co-op hostiles no)? */
+  bots: boolean;
+}
+
 export class MatchSim {
   readonly players = new Map<string, SimPlayer>();
   tick = 0;
@@ -98,6 +111,31 @@ export class MatchSim {
 
   /** While true, inputs are discarded (round freeze time). */
   frozen = false;
+
+  /**
+   * Respawn allowance. `player`: every player gets `count` respawns (reset each round).
+   * `team`: one shared pool per team for the whole match. Bots only use it when `bots` is set.
+   */
+  lives: LifeRules = { scope: 'none', count: 0, delay: 3, bots: false };
+  readonly teamLives: Record<Team, number> = { attackers: 0, defenders: 0 };
+
+  setLives(rules: LifeRules): void {
+    this.lives = rules;
+    this.teamLives.attackers = this.teamLives.defenders = rules.scope === 'team' ? rules.count : 0;
+    for (const p of this.players.values()) p.livesLeft = rules.scope === 'player' ? rules.count : 0;
+  }
+
+  /** Back to the full shared pool (co-op refills it at every objective). */
+  refillTeamLives(): void {
+    if (this.lives.scope === 'team')
+      this.teamLives.attackers = this.teamLives.defenders = this.lives.count;
+  }
+
+  /** Lives a player can still draw on (their own, or their team's shared pool). */
+  livesFor(p: SimPlayer): number {
+    if (this.lives.scope === 'none' || (p.isBot && !this.lives.bots)) return 0;
+    return this.lives.scope === 'team' ? this.teamLives[p.team] : p.livesLeft;
+  }
 
   constructor(
     private readonly map: MapDef,
@@ -146,6 +184,8 @@ export class MatchSim {
       yaw: team === 'attackers' ? -Math.PI / 2 : Math.PI / 2,
       pitch: 0,
       respawnIn: 0,
+      pendingRespawn: false,
+      livesLeft: this.lives.scope === 'player' ? this.lives.count : 0,
       queue: [],
       lastInput: null,
       credit: 0,
@@ -209,14 +249,26 @@ export class MatchSim {
     const p = this.players.get(id);
     if (!p) return;
     p.queue.push(input);
-    if (p.queue.length > MAX_QUEUE) p.queue.shift();
+    if (p.queue.length > MAX_QUEUE) {
+      // Never lose a one-shot action (trigger pull, jump, reload) with the dropped input.
+      const dropped = p.queue.shift() as InputMessage;
+      const next = p.queue[0];
+      if (next && (dropped.fire || dropped.jump || dropped.reload)) {
+        p.queue[0] = {
+          ...next,
+          fire: next.fire || dropped.fire,
+          jump: next.jump || dropped.jump,
+          reload: next.reload || dropped.reload,
+        };
+      }
+    }
   }
 
   step(): void {
     this.tick++;
     for (const p of this.players.values()) {
       if (!p.alive) {
-        if (this.respawnSeconds !== null) {
+        if (p.pendingRespawn) {
           p.respawnIn -= FIXED_DT;
           if (p.respawnIn <= 0) this.respawn(p);
         }
@@ -350,7 +402,17 @@ export class MatchSim {
     victim.alive = false;
     victim.deaths++;
     killer.kills++;
-    victim.respawnIn = this.respawnSeconds ?? 0;
+    victim.pendingRespawn = false;
+    victim.respawnIn = 0;
+    if (this.respawnSeconds !== null) {
+      victim.pendingRespawn = true;
+      victim.respawnIn = this.respawnSeconds;
+    } else if (this.livesFor(victim) > 0) {
+      if (this.lives.scope === 'team') this.teamLives[victim.team]--;
+      else victim.livesLeft--;
+      victim.pendingRespawn = true;
+      victim.respawnIn = this.lives.delay;
+    }
     victim.interact = false;
     victim.interactProgress = 0;
     victim.queue.length = 0;
@@ -380,6 +442,8 @@ export class MatchSim {
     p.health.reset();
     p.weapon.refill();
     p.alive = true;
+    p.pendingRespawn = false;
+    p.respawnIn = 0;
     p.lastInput = null;
     p.prevFire = false;
     p.queue.length = 0;
@@ -395,13 +459,14 @@ export class MatchSim {
     this.spawnCursor.defenders = 0;
     for (const p of this.players.values()) {
       p.side = sideOf(p);
+      if (this.lives.scope === 'player') p.livesLeft = this.lives.count;
       this.respawn(p);
     }
   }
 
   alivePerSide(): Record<Team, number> {
     const n: Record<Team, number> = { attackers: 0, defenders: 0 };
-    for (const p of this.players.values()) if (p.alive) n[p.side]++;
+    for (const p of this.players.values()) if (p.alive || p.pendingRespawn) n[p.side]++;
     return n;
   }
 

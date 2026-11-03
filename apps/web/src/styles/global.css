@@ -1183,3 +1183,42 @@ body {
     max-width: none;
   }
 }
+
+/* Respawn pips + spectate line (all devices) */
+.hud-lives {
+  position: absolute;
+  left: 20px;
+  bottom: 96px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.hud-lives .pip {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  opacity: 0.6;
+}
+.hud-lives .pip.is-on {
+  background: var(--accent, #ffb020);
+  border-color: var(--accent, #ffb020);
+  opacity: 1;
+}
+.eliminated .spectate-line {
+  color: var(--text, #e8ecf1);
+  letter-spacing: 0.12em;
+  text-transform: none;
+}
+.game.touch .hud-lives {
+  left: 12px;
+  bottom: auto;
+  top: 96px;
+}
+.game.touch .eliminated {
+  font-size: 26px;
+  letter-spacing: 0.18em;
+  top: 22%;
+  width: 90%;
+}

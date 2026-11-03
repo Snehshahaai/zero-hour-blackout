@@ -195,6 +195,7 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
 }
 
 function MatchHudView({ hud }: { hud: MatchHud }) {
+  const { touch } = useControlMode();
   const hpPct = Math.round((hud.health / hud.maxHealth) * 100);
   return (
     <div className="hud" aria-live="off">
@@ -225,8 +226,27 @@ function MatchHudView({ hud }: { hud: MatchHud }) {
       )}
       {!hud.alive && (
         <div className="eliminated" role="status">
-          ELIMINATED
-          <small>Respawning…</small>
+          {hud.lives.respawnIn > 0 ? 'DOWN' : 'ELIMINATED'}
+          <small>
+            {hud.lives.respawnIn > 0
+              ? `Respawning in ${Math.ceil(hud.lives.respawnIn)}…`
+              : hud.coop
+                ? 'No respawns left this objective'
+                : 'Eliminated until next round'}
+          </small>
+          {hud.spectating && (
+            <small className="spectate-line">
+              Watching {hud.spectating} · {touch ? 'tap Fire' : 'click'} to switch
+            </small>
+          )}
+        </div>
+      )}
+      {hud.coop && (
+        <div className="hud-lives" aria-label={`${hud.lives.left} respawns left`}>
+          <span className="hud-label">RESPAWNS</span>
+          {[0, 1, 2].map((i) => (
+            <span key={i} className={i < hud.lives.left ? 'pip is-on' : 'pip'} />
+          ))}
         </div>
       )}
       <ul className="killfeed">
@@ -319,8 +339,11 @@ function RoundBar({ hud }: { hud: MatchHud }) {
         </div>
       )}
       <div className="roundbar-meta">
-        ROUND {round.number} · YOU ARE {mySide.toUpperCase()} ·{' '}
-        {mySide === 'attackers' ? 'PLANT THE BOMB' : 'STOP THE PLANT'}
+        {round.deathmatch > 0
+          ? `DEATHMATCH · FIRST TO ${round.deathmatch} KILLS`
+          : `ROUND ${round.number} · YOU ARE ${mySide.toUpperCase()} · ${
+              mySide === 'attackers' ? 'PLANT THE BOMB' : 'STOP THE PLANT'
+            }`}
         {hud.weather !== 'clear' && ` · ${hud.weather.toUpperCase()}`}
       </div>
     </div>

@@ -67,6 +67,10 @@ export interface NetPlayer {
   kills: number;
   deaths: number;
   ackSeq: number;
+  /** Respawns left (own, or the team's shared pool in co-op). */
+  livesLeft: number;
+  /** Seconds until this player comes back; 0 = not coming back. */
+  respawnIn: number;
 }
 
 export interface RoundInfo {
@@ -80,6 +84,8 @@ export interface RoundInfo {
   bombState: BombState;
   bombSite: string;
   matchWinner: '' | Team;
+  /** 1v1 deathmatch kill target (0 = normal bomb rounds). */
+  deathmatch: number;
 }
 
 export type NetRoundEvent =
@@ -194,7 +200,14 @@ export interface MatchHud {
   feed: string[];
   myTeam: Team;
   mySide: Team;
-  round: { phase: RoundPhase; number: number; timeLeft: number; mine: number; theirs: number };
+  round: {
+    phase: RoundPhase;
+    number: number;
+    timeLeft: number;
+    mine: number;
+    theirs: number;
+    deathmatch: number;
+  };
   bomb: { planted: boolean; site: string };
   /** Context action available right now, e.g. "Hold E to plant". */
   prompt: string | null;
@@ -216,6 +229,10 @@ export interface MatchHud {
   weather: WeatherKind;
   /** Active outage, if any. */
   power: { label: string; secondsLeft: number } | null;
+  /** Respawns you have left, and the countdown while you wait to come back. */
+  lives: { left: number; respawnIn: number };
+  /** Name of the teammate you are watching while dead, if anyone is left to watch. */
+  spectating: string | null;
 }
 
 export interface MatchGame {
@@ -251,6 +268,7 @@ interface Sample {
   y: number;
   z: number;
   yaw: number;
+  pitch: number;
   crouching: boolean;
 }
 interface Remote {
@@ -318,6 +336,7 @@ export async function createMatchGame(
   const remotes = new Map<string, Remote>();
   /** Bots are tinted hostile only in co-op; in competitive they are just opponents/teammates. */
   let coopMode = false;
+  let mateIds = new Set<string>();
 
   // ---- prediction state ----
   let seq = 0;
@@ -340,6 +359,8 @@ export async function createMatchGame(
   const ownStride = new StrideTracker();
   let beepClock = 0;
   let fps = 60;
+  let slowClock = 0;
+  let autoQuality: GraphicsQuality = quality;
   const prev = { x: spawn[0], y: 0.05, z: spawn[1], eye: Number(MOVEMENT.standEye) };
   const curr = { ...prev };
   let lookDx = 0;
@@ -361,7 +382,7 @@ export async function createMatchGame(
     feed: [],
     myTeam: 'attackers',
     mySide: 'attackers',
-    round: { phase: 'freeze', number: 0, timeLeft: 0, mine: 0, theirs: 0 },
+    round: { phase: 'freeze', number: 0, timeLeft: 0, mine: 0, theirs: 0, deathmatch: 0 },
     bomb: { planted: false, site: '' },
     prompt: null,
     progress: 0,
@@ -370,6 +391,8 @@ export async function createMatchGame(
     weather: 'clear',
     power: null,
     coop: null,
+    lives: { left: 0, respawnIn: 0 },
+    spectating: null,
   };
   const snapshotHud = (): MatchHud => ({
     ...hud,
@@ -380,6 +403,7 @@ export async function createMatchGame(
     bomb: { ...hud.bomb },
     power: hud.power ? { ...hud.power } : null,
     coop: hud.coop ? { ...hud.coop } : null,
+    lives: { ...hud.lives },
   });
   const emitHud = () => {
     const snap = snapshotHud();
@@ -442,6 +466,7 @@ export async function createMatchGame(
         y: p.y,
         z: p.z,
         yaw: p.yaw,
+        pitch: p.pitch,
         crouching: p.crouching,
       });
       if (r.samples.length > 30) r.samples.shift();
@@ -465,7 +490,14 @@ export async function createMatchGame(
       hud.mySide = me.side;
       const mine = me.team === 'attackers' ? ri.scoreAttackers : ri.scoreDefenders;
       const theirs = me.team === 'attackers' ? ri.scoreDefenders : ri.scoreAttackers;
-      hud.round = { phase: ri.phase, number: ri.number, timeLeft: ri.timeLeft, mine, theirs };
+      hud.round = {
+        phase: ri.phase,
+        number: ri.number,
+        timeLeft: ri.timeLeft,
+        mine,
+        theirs,
+        deathmatch: ri.deathmatch,
+      };
       hud.bomb = { planted: ri.bombState === 'planted', site: ri.bombSite };
       hud.progress = me.interactProgress;
       hud.result = coop
@@ -489,9 +521,11 @@ export async function createMatchGame(
             hostiles: snap.mission.hostiles,
           }
         : null;
-      hud.teammates = Object.values(snap.players)
-        .filter((p) => (coopMode ? !p.isBot : true) && p.team === me.team && p.id !== me.id)
-        .map((p) => ({ name: p.name, health: p.health, alive: p.alive }));
+      const mates = Object.values(snap.players).filter(
+        (p) => (coopMode ? !p.isBot : true) && p.team === me.team && p.id !== me.id,
+      );
+      mateIds = new Set(mates.map((p) => p.id));
+      hud.teammates = mates.map((p) => ({ name: p.name, health: p.health, alive: p.alive }));
       hud.prompt = coop ? null : computePrompt(me, ri);
       hud.weather = snap.weather;
       hud.ammo = me.ammo;
@@ -499,6 +533,7 @@ export async function createMatchGame(
       hud.reloading = me.reloading;
       hud.health = me.health;
       hud.alive = me.alive;
+      hud.lives = { left: me.livesLeft ?? 0, respawnIn: me.respawnIn ?? 0 };
     }
     hud.scores = Object.values(snap.players)
       .filter((p) => (coopMode ? !p.isBot : true))
@@ -530,6 +565,7 @@ export async function createMatchGame(
     // First snapshot, or just respawned: take the server's word, drop all prediction.
     if (!initialised || (me.alive && !wasAlive) || roundChanged) {
       const first = !initialised;
+      const respawned = me.alive && !wasAlive;
       initialised = true;
       wasAlive = me.alive;
       pending = [];
@@ -538,7 +574,7 @@ export async function createMatchGame(
       weapon.refill();
       Object.assign(curr, { x: me.x, y: me.y, z: me.z, eye: player.state.eyeHeight });
       Object.assign(prev, curr);
-      if (first || roundChanged) {
+      if (first || roundChanged || respawned) {
         fpCamera.yaw = me.yaw; // face the way the server spawned us
         fpCamera.pitch = 0;
       }
@@ -608,6 +644,7 @@ export async function createMatchGame(
 
   function computePrompt(me: NetPlayer, ri: RoundInfo): string | null {
     if (!me.alive || (ri.phase !== 'live' && ri.phase !== 'planted')) return null;
+    if (ri.deathmatch > 0) return panelPrompt();
     const s = player.state;
     if (ri.bombState === 'planted') {
       if (me.side !== 'defenders') return panelPrompt();
@@ -753,8 +790,37 @@ export async function createMatchGame(
     }
   });
 
+  // ---- spectating: while dead, watch a living teammate; Fire (click / tap) cycles through them ----
+  let spectateId: string | null = null;
+  function spectateCandidates(): [string, Remote][] {
+    const out: [string, Remote][] = [];
+    for (const [id, r] of remotes) {
+      if (r.alive && r.samples.length > 0 && mateIds.has(id)) out.push([id, r]);
+    }
+    return out;
+  }
+  function spectateTarget(cycle = false): Remote | null {
+    const list = spectateCandidates();
+    if (list.length === 0) {
+      spectateId = null;
+      return null;
+    }
+    const at = list.findIndex(([id]) => id === spectateId);
+    if (at < 0) spectateId = (list[0] as [string, Remote])[0];
+    else if (cycle) spectateId = (list[(at + 1) % list.length] as [string, Remote])[0];
+    return remotes.get(spectateId as string) ?? null;
+  }
+
   const cues = { magOut: false, magIn: false, chamber: false };
   const eye = (): Point3 => ({ x: curr.x, y: curr.y + curr.eye, z: curr.z });
+
+  function applyQuality(q: GraphicsQuality): void {
+    gr.setQuality(q);
+    audio.setHrtf(q !== 'low');
+    if (weatherKind) weather.set(weatherKind, gr.quality.rainDrops);
+    map.setAnisotropy(gr.quality.anisotropy);
+    map.setPointLightCount(gr.quality.maxPointLights);
+  }
 
   const loop = new GameLoop(
     {
@@ -766,6 +832,9 @@ export async function createMatchGame(
         prev.eye = curr.eye;
         const canAct = hud.alive && (roundPhase === 'live' || roundPhase === 'planted');
         const active = input.locked && initialised && canAct;
+        // Latch taps even when this tick is not "active", so they never leak into the next one.
+        const fireTap = input.consumeFirePressed();
+        if (!hud.alive && fireTap && input.locked) spectateTarget(true);
         const rt = serverOffset === null ? 0 : serverNow() - INTERP_DELAY_MS;
 
         if (active) {
@@ -776,7 +845,7 @@ export async function createMatchGame(
             jump: input.consumeJump(),
             sprint: input.isDown('ShiftLeft') || input.isDown('ShiftRight'),
             crouch: input.isDown('ControlLeft') || input.isDown('KeyC'),
-            fire: input.isMouseDown(0),
+            fire: input.isMouseDown(0) || fireTap,
             reload: input.consumePressed('KeyR'),
             interact: input.isDown('KeyE'),
             yaw: fpCamera.yaw,
@@ -870,12 +939,33 @@ export async function createMatchGame(
         if (hud.alive) fpCamera.look(m.dx, m.dy, SENSITIVITY);
         lookDx = m.dx;
         lookDy = m.dy;
-        fpCamera.apply(
-          lerp(prev.x, curr.x, alpha),
-          lerp(prev.y, curr.y, alpha) + lerp(prev.eye, curr.eye, alpha),
-          lerp(prev.z, curr.z, alpha),
-          weapon.recoil,
-        );
+        const watching = hud.alive ? null : spectateTarget();
+        if (watching) {
+          // Dead: ride along with a living teammate (position/aim are interpolated like any remote).
+          const g = watching.group;
+          const sm = watching.samples;
+          const last = sm[sm.length - 1];
+          fpCamera.yaw = g.rotation.y;
+          fpCamera.pitch = last?.pitch ?? 0;
+          fpCamera.apply(
+            g.position.x,
+            g.position.y + (last?.crouching ? 1.05 : 1.55),
+            g.position.z,
+          );
+          watching.group.visible = false; // never sit inside their own body
+        } else {
+          fpCamera.apply(
+            lerp(prev.x, curr.x, alpha),
+            lerp(prev.y, curr.y, alpha) + lerp(prev.eye, curr.eye, alpha),
+            lerp(prev.z, curr.z, alpha),
+            weapon.recoil,
+          );
+        }
+        const watchName = watching?.group.name ?? null;
+        if (watchName !== hud.spectating) {
+          hud.spectating = watchName;
+          emitHud();
+        }
         viewModel.setVisible(hud.alive);
         const s = player.state;
         viewModel.update(frameDt, {
@@ -962,6 +1052,13 @@ export async function createMatchGame(
         updateBomb(frameDt);
         gr.render();
         if (frameDt > 0) fps += (1 / frameDt - fps) * 0.1;
+        // Struggling device: step graphics down by itself instead of letting the match stutter.
+        slowClock = fps < 28 ? slowClock + frameDt : 0;
+        if (slowClock > 4 && autoQuality !== 'low') {
+          slowClock = 0;
+          autoQuality = autoQuality === 'high' ? 'medium' : 'low';
+          applyQuality(autoQuality);
+        }
       },
     },
     { tickRate: 1 / FIXED_DT },
@@ -984,11 +1081,8 @@ export async function createMatchGame(
       return () => listeners.delete(l);
     },
     setQuality(q) {
-      gr.setQuality(q);
-      audio.setHrtf(q !== 'low');
-      if (weatherKind) weather.set(weatherKind, gr.quality.rainDrops);
-      map.setAnisotropy(gr.quality.anisotropy);
-      map.setPointLightCount(gr.quality.maxPointLights);
+      autoQuality = q;
+      applyQuality(q);
     },
     debug() {
       const s = player.state;

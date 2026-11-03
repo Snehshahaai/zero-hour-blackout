@@ -186,6 +186,7 @@ class Network {
         bombState: RoundInfo['bombState'];
         bombSite: string;
         matchWinner: RoundInfo['matchWinner'];
+        deathmatchKills: number;
         power: Record<string, NetPowerState>;
         doors: Record<string, { closed: boolean }>;
         weather: MatchSnapshot['weather'];
@@ -224,6 +225,7 @@ class Network {
           bombState: raw.bombState,
           bombSite: raw.bombSite,
           matchWinner: raw.matchWinner,
+          deathmatch: raw.deathmatchKills ?? 0,
         },
       };
     };

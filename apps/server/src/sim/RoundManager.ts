@@ -71,7 +71,7 @@ export class RoundManager {
         this.timeLeft -= dt;
         if (this.timeLeft <= 0) {
           this.phase = 'live';
-          this.timeLeft = this.rules.roundSeconds;
+          this.timeLeft = this.deathmatch ? this.rules.deathmatchSeconds : this.rules.roundSeconds;
           this.sim.frozen = false;
         }
         break;
@@ -157,7 +157,35 @@ export class RoundManager {
 
   // ---- live round ------------------------------------------------------------------
 
+  get deathmatch(): boolean {
+    return this.rules.deathmatchKills > 0;
+  }
+
+  /** 1v1: kills are the score, everyone respawns, first to the target (or the leader at the cap) wins. */
+  private stepDeathmatch(dt: number): void {
+    for (const p of this.sim.players.values()) p.interactProgress = 0;
+    const kills: Record<Team, number> = { attackers: 0, defenders: 0 };
+    for (const p of this.sim.players.values()) kills[p.team] += p.kills;
+    this.scores.attackers = kills.attackers;
+    this.scores.defenders = kills.defenders;
+    const lead: Team = kills.attackers >= kills.defenders ? 'attackers' : 'defenders';
+    if (kills[lead] >= this.rules.deathmatchKills) {
+      this.matchWinner = lead;
+      return this.beginMatchEnd('score');
+    }
+    this.timeLeft -= dt;
+    if (this.timeLeft <= 0) {
+      if (kills.attackers === kills.defenders)
+        this.timeLeft = 60; // tied: sudden-death minute
+      else {
+        this.matchWinner = lead;
+        this.beginMatchEnd('score');
+      }
+    }
+  }
+
   private stepLive(dt: number): void {
+    if (this.deathmatch) return this.stepDeathmatch(dt);
     const alive = this.sim.alivePerSide();
     this.stepInteraction(dt);
     if (this.phase === 'roundEnd') return; // a defuse just ended the round

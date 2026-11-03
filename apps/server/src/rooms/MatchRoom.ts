@@ -70,6 +70,9 @@ function randomCode(): string {
  * validated intents (`setTeam`, `setReady`, `start`) and the server decides what happens.
  * The room id *is* the shareable 6-character room code.
  */
+/** Most ticks one timer callback may run to catch up after a stall (~0.2 s of game time). */
+const MAX_CATCHUP_TICKS = 12;
+
 export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   override state = new LobbyState();
   private readonly limiter = new RateLimiter();
@@ -77,6 +80,9 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   private readonly inputLimiter = new RateLimiter(120, 140);
   /** Server-side round timing; set by `createGameServer` (tests use short rounds). Never client-controlled. */
   static roundRules: Partial<RoundRules> = {};
+  static deathmatchKills = 40;
+  static coopLives = 3;
+  static respawnDelay = 3;
   static powerRules: Partial<PowerRules> = {};
   static coopRules: Partial<CoopRules> = {};
   /** Process-wide cap on simultaneous rooms (configured by `createGameServer`). */
@@ -235,6 +241,19 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       sim.addPlayer(p.id, p.name, p.team as Team);
       this.state.sim.set(p.id, new SimPlayerSchema());
     }
+    // Respawns: co-op shares a pool of 3 per objective; 1v1 deathmatch always respawns;
+    // 2v2 rounds have none (you stay down until the next round, spectating a teammate).
+    const deathmatch = this.state.mode === 'competitive' && this.state.format === '1v1';
+    if (this.state.mode === 'cooperative')
+      sim.setLives({
+        scope: 'team',
+        count: MatchRoom.coopLives,
+        delay: MatchRoom.respawnDelay,
+        bots: false,
+      });
+    else if (deathmatch)
+      sim.setLives({ scope: 'player', count: 255, delay: MatchRoom.respawnDelay, bots: true });
+    this.state.deathmatchKills = deathmatch ? MatchRoom.deathmatchKills : 0;
     this.sim = sim;
     metrics.counters.matchesStarted++;
     this.state.weather = MatchRoom.weatherOverride ?? pickWeather();
@@ -245,17 +264,16 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       this.power = new PowerGrid(sim, MAP_01, (e) => this.onPowerEvent(e), MatchRoom.powerRules);
       for (const panel of MAP_01.panels) this.state.power.set(panel.zone, new ZonePowerSchema());
       for (const door of MAP_01.doors) this.state.doors.set(door.id, new DoorSchema());
-      this.rounds = new RoundManager(
-        sim,
-        MAP_01,
-        (e) => this.onRoundEvent(e),
-        MatchRoom.roundRules,
-      );
+      this.rounds = new RoundManager(sim, MAP_01, (e) => this.onRoundEvent(e), {
+        ...(this.state.deathmatchKills ? { deathmatchKills: this.state.deathmatchKills } : {}),
+        ...MatchRoom.roundRules,
+      });
       if (this.state.fillBots) this.addBotsToEmptySlots(sim, this.rounds);
       this.rounds.start();
     }
     this.patchRate = 50; // 20 Hz state broadcast; the sim itself ticks at 60 Hz
-    this.setSimulationInterval(() => this.stepSim(), 1000 / MATCH_TICK_RATE);
+    this.simClock = performance.now();
+    this.setSimulationInterval(() => this.catchUp(), 1000 / MATCH_TICK_RATE);
   }
 
   /** Practice rooms: AI players take every slot no human filled, on both teams. */
@@ -274,6 +292,28 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       for (let i = humans; i < size; i++) bots.addBot(team);
     }
     this.bots = bots;
+  }
+
+  private simClock = 0;
+
+  /**
+   * Keeps game time on the wall clock. On a starved host (free-tier CPU) timer callbacks arrive
+   * late; stepping once per callback would stretch every round timer. Instead run the ticks that
+   * are due, capped so a long stall cannot snowball into a death spiral.
+   */
+  private catchUp(): void {
+    const step = 1000 / MATCH_TICK_RATE;
+    const now = performance.now();
+    let due = Math.floor((now - this.simClock) / step);
+    if (due > MAX_CATCHUP_TICKS) {
+      this.simClock = now - step * MAX_CATCHUP_TICKS; // forget the unrecoverable backlog
+      due = MAX_CATCHUP_TICKS;
+    }
+    for (let i = 0; i < Math.max(1, due); i++) {
+      if (!this.sim) return;
+      this.stepSim();
+    }
+    this.simClock += step * Math.max(1, due);
   }
 
   private stepSim(): void {
@@ -367,6 +407,8 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       view.kills = sp.kills;
       view.deaths = sp.deaths;
       view.ackSeq = sp.ackSeq;
+      view.livesLeft = sim.livesFor(sp);
+      view.respawnIn = sp.pendingRespawn ? Math.round(sp.respawnIn * 10) / 10 : 0;
     }
   }
 
@@ -413,6 +455,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.state.power.clear();
     this.state.doors.clear();
     this.state.weather = 'clear';
+    this.state.deathmatchKills = 0;
     for (const p of this.state.players.values()) p.ready = false;
     this.state.phase = 'lobby';
     this.state.countdown = 0;

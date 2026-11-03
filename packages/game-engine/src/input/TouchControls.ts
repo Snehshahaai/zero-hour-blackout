@@ -257,7 +257,7 @@ export class TouchControls {
       'Fire',
       { right: '28px', bottom: '34px' },
       92,
-      { down: () => (s.fire = true), up: () => (s.fire = false) },
+      { down: () => s.latchFire(), up: () => (s.fire = false) },
       'touch-fire',
     );
     this.button(
