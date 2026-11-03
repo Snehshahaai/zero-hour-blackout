@@ -29,3 +29,12 @@
 - `MOVEMENT` constants live in `entities/movement.ts` so the server can run the identical step for reconciliation (Phase 5). The server will need `PhysicsWorld` + `PlayerController`; both are free of DOM/Three.js imports.
 - Game time slows rather than spiralling when the frame rate falls below ~12 fps (`GameLoop` caps catch-up at 5 steps).
 - Colliders include roofs and glass. Crouch resizes the capsule in place with feet fixed; standing requires a shape-intersection headroom test.
+
+## Weapons & combat notes (Phase 4)
+
+- `WeaponSim`, `Health`, `computeDamage`, `Hitscan` and `TargetDummy` have no Three.js/DOM dependency: the server will run them as the authority. Clients will run the same `WeaponSim` for prediction and only show effects; hit results and damage come from the server in Phase 5.
+- Shot spread uses a seeded PRNG (`shotCounter`, per-player seed) so the server can reproduce the client's shot offsets for validation.
+- Rapier 0.21 refreshes its query pipeline only on `world.step()`; use `PhysicsWorld.refreshQueries()` after creating/enabling/disabling colliders that rays must see immediately. (`@types/three` pulls in an unrelated old rapier 0.12 for its own typings; ignore it.)
+- The weapon view model is drawn in a second render pass with a separate camera after a depth clear, so it never clips into walls and has its own FOV.
+- Effects (tracers, decals, sparks) are pooled; nothing is allocated per shot.
+- Testing note: under headless pointer lock, Playwright mouse moves don't produce `movementX`, and click/lock can inject stray movement; browser tests aim by dispatching synthetic `mousemove` events and read yaw/pitch from the debug overlay.

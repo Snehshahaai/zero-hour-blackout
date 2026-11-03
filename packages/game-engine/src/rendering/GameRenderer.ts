@@ -19,6 +19,10 @@ import { QUALITY_PRESETS, type QualitySettings } from './quality.ts';
 export class GameRenderer {
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(70, 1, 0.1, 400);
+  /** Second pass for the first-person weapon: drawn after a depth clear so it never clips into walls. */
+  readonly viewScene = new Scene();
+  readonly viewCamera = new PerspectiveCamera(58, 1, 0.01, 10);
+  viewModelVisible = false;
   readonly renderer: WebGLRenderer;
   readonly sun: DirectionalLight;
   private settings: QualitySettings;
@@ -44,6 +48,10 @@ export class GameRenderer {
     this.scene.fog = new FogExp2(0x080a0d, 0.012);
 
     this.scene.add(new HemisphereLight(0x8aa0c0, 0x30302c, 1.1));
+    this.viewScene.add(new HemisphereLight(0xa8b8d0, 0x302c28, 1.6));
+    const keyLight = new DirectionalLight(0xffffff, 1.8);
+    keyLight.position.set(0.4, 1, 0.6);
+    this.viewScene.add(keyLight);
 
     // Cold moonlight key light; its shadow frustum covers the whole (compact) map.
     this.sun = new DirectionalLight(0x9db4d8, 1.4);
@@ -93,10 +101,19 @@ export class GameRenderer {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.viewCamera.aspect = w / h;
+    this.viewCamera.updateProjectionMatrix();
   }
 
   render(): void {
-    this.renderer.render(this.scene, this.camera);
+    const r = this.renderer;
+    r.autoClear = false;
+    r.clear();
+    r.render(this.scene, this.camera);
+    if (this.viewModelVisible) {
+      r.clearDepth();
+      r.render(this.viewScene, this.viewCamera);
+    }
   }
 
   dispose(): void {

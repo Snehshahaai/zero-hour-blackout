@@ -53,6 +53,14 @@ export class PhysicsWorld {
     return new PhysicsWorld(world);
   }
 
+  /**
+   * Rapier 0.21 only refreshes its query pipeline on `step()`. Call this after creating,
+   * enabling or disabling a collider that ray/shape queries must see immediately.
+   */
+  refreshQueries(): void {
+    this.world.step();
+  }
+
   dispose(): void {
     this.world.free();
   }

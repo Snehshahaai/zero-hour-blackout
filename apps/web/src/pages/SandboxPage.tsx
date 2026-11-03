@@ -1,4 +1,4 @@
-import { createSandbox, type Sandbox, type SandboxDebug } from '@zhb/game-engine';
+import { createSandbox, type HudState, type Sandbox, type SandboxDebug } from '@zhb/game-engine';
 import { useEffect, useRef, useState } from 'react';
 import { useGraphicsQuality } from '../hooks/useGraphicsQuality.ts';
 
@@ -15,6 +15,7 @@ export function SandboxPage({ onExit }: { onExit: () => void }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading', fraction: 0, label: 'Starting' });
   const [locked, setLocked] = useState(false);
   const [dbg, setDbg] = useState<SandboxDebug | null>(null);
+  const [hud, setHud] = useState<HudState | null>(null);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -24,14 +25,14 @@ export function SandboxPage({ onExit }: { onExit: () => void }) {
     canvas.className = 'game-canvas';
     host.appendChild(canvas);
     let cancelled = false;
-    let unsubscribe: (() => void) | undefined;
+    const unsubscribers: (() => void)[] = [];
     createSandbox(canvas, initialQuality.current, (fraction, label) => {
       if (!cancelled) setPhase({ kind: 'loading', fraction, label });
     })
       .then((sb) => {
         if (cancelled) return sb.dispose();
         sandboxRef.current = sb;
-        unsubscribe = sb.onLockChange(setLocked);
+        unsubscribers.push(sb.onLockChange(setLocked), sb.onHud(setHud));
         setPhase({ kind: 'ready' });
       })
       .catch((e: unknown) => {
@@ -40,7 +41,7 @@ export function SandboxPage({ onExit }: { onExit: () => void }) {
       });
     return () => {
       cancelled = true;
-      unsubscribe?.();
+      unsubscribers.forEach((u) => u());
       sandboxRef.current?.dispose();
       sandboxRef.current = null;
       canvas.remove();
@@ -97,6 +98,15 @@ export function SandboxPage({ onExit }: { onExit: () => void }) {
               <kbd>Space</kbd> jump
             </li>
             <li>
+              <kbd>Mouse 1</kbd> fire (hold for auto)
+            </li>
+            <li>
+              <kbd>R</kbd> reload
+            </li>
+            <li>
+              <kbd>H</kbd> dev: take 10 damage
+            </li>
+            <li>
               <kbd>Esc</kbd> release mouse
             </li>
           </ul>
@@ -112,11 +122,41 @@ export function SandboxPage({ onExit }: { onExit: () => void }) {
         </div>
       )}
       {phase.kind === 'ready' && locked && <div className="crosshair" aria-hidden="true" />}
+      {phase.kind === 'ready' && hud && <Hud hud={hud} />}
       {dbg && (
         <pre className="debug" data-testid="debug">
-          {`${dbg.fps} fps  speed ${dbg.speed.toFixed(1)} m/s\n${dbg.sprinting ? 'sprint ' : ''}${dbg.crouching ? 'crouch ' : ''}${dbg.grounded ? 'ground' : 'air'}\nx ${dbg.x.toFixed(1)}  y ${dbg.y.toFixed(1)}  z ${dbg.z.toFixed(1)}`}
+          {`${dbg.fps} fps  speed ${dbg.speed.toFixed(1)} m/s\n${dbg.sprinting ? 'sprint ' : ''}${dbg.crouching ? 'crouch ' : ''}${dbg.grounded ? 'ground' : 'air'}\nx ${dbg.x.toFixed(1)}  y ${dbg.y.toFixed(1)}  z ${dbg.z.toFixed(1)}\nyaw ${dbg.yawDeg.toFixed(0)}  pitch ${dbg.pitchDeg.toFixed(0)}`}
         </pre>
       )}
+    </div>
+  );
+}
+
+function Hud({ hud }: { hud: HudState }) {
+  const low = hud.ammo <= 6;
+  const hpPct = Math.round((hud.health / hud.maxHealth) * 100);
+  return (
+    <div className="hud" aria-live="off">
+      {hud.hitKind && (
+        <div key={hud.hitSeq} className={`hitmarker hit-${hud.hitKind}`} aria-hidden="true" />
+      )}
+      <div className="hud-health">
+        <span className="hud-label">HEALTH</span>
+        <span className={`hud-big${hpPct <= 30 ? ' is-low' : ''}`}>{hud.health}</span>
+        <span className="hud-bar">
+          <span style={{ width: `${hpPct}%` }} />
+        </span>
+      </div>
+      <div className="hud-ammo">
+        <span className="hud-label">{hud.weaponName}</span>
+        <span className={`hud-big${low ? ' is-low' : ''}`}>
+          {hud.reloading ? '--' : String(hud.ammo).padStart(2, '0')}
+          <small> / {hud.reserve}</small>
+        </span>
+        <span className="hud-status">
+          {hud.reloading ? 'RELOADING' : hud.ammo === 0 ? 'EMPTY · PRESS R' : 'FULL AUTO'}
+        </span>
+      </div>
     </div>
   );
 }

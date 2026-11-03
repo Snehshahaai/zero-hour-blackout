@@ -10,3 +10,7 @@ export * from './entities/index.ts';
 export * from './input/index.ts';
 export * from './camera/index.ts';
 export * from './Sandbox.ts';
+export * from './weapons/index.ts';
+export * from './audio/index.ts';
+export * from './rendering/ViewModel.ts';
+export * from './rendering/Effects.ts';

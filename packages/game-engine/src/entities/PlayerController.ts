@@ -39,7 +39,8 @@ const halfFor = (total: number) => (total - 2 * radius) / 2;
 export class PlayerController {
   readonly state: PlayerState;
   private readonly body: RAPIER.RigidBody;
-  private readonly collider: RAPIER.Collider;
+  /** The player's own collider; exclude it from the player's ray queries. */
+  readonly collider: RAPIER.Collider;
   private readonly controller: RAPIER.KinematicCharacterController;
   private readonly standShape = new RAPIER.Capsule(halfFor(standHeight), radius - 0.02);
   private height: number = standHeight;

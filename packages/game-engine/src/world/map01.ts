@@ -181,3 +181,13 @@ function build(): MapDef {
 }
 
 export const MAP_01: MapDef = build();
+
+/** Practice-target spots for the solo sandbox ([x, z]); all in open floor space. */
+export const SANDBOX_TARGETS: readonly (readonly [number, number])[] = [
+  [34, 25],
+  [38.5, 16],
+  [24, 21],
+  [33, 13.5],
+  [50, 24],
+  [22, 38],
+];

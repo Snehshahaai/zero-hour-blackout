@@ -31,8 +31,20 @@
 - [ ] Not done: weapon sway (Phase 4, needs a weapon), footsteps/audio, mouse-sensitivity and key-binding settings, gamepad, Safari/Firefox verification, measured performance (only checked under software rendering at 13-40 fps)
 - Known: stance/jump constants in `MOVEMENT` are first-pass and need playtesting; concrete texture tiling is visible; metal looks flat without an environment map.
 
+## Phase 4: Weapon system — DONE (single rifle, solo sandbox)
+
+- [x] `WeaponSim`: fire rate (700 rpm), magazine/reserve ammo, reload (tactical, cannot fire mid-reload, auto-reload on dry fire), recoil pattern with recovery, movement/air/crouch spread + bloom, seeded deterministic shot offsets
+- [x] `computeDamage` (range falloff + headshot x2), `Health`, `TargetDummy` (respawning practice targets)
+- [x] `Hitscan` ray queries against map + targets, headshot zone, own-collider exclusion; walls block shots
+- [x] First-person rifle view model (procedural): spring recoil, movement bob, look sway, sprint pose, scripted reload; muzzle flash; tracers; impact decals/sparks (pooled)
+- [x] Synthesised audio (shot, dry, mag out/in, chamber, hit, headshot, kill, impact), no audio assets
+- [x] HUD: health, ammo/reserve, weapon, reload/empty state, hit marker (hit / headshot / kill) driven by events, not per frame
+- [x] 39 unit tests (weapon sim, damage, hitscan vs real Map 01); verified in a real browser: fire, reload, aimed body and head hits
+- [ ] Not done: server-side hit validation and lag compensation (Phase 5), spatial/occluded audio (Phase 7), authored weapon model/animations (Blender), hit-location damage for limbs, bullet penetration, weapon switching/other weapon classes, ADS
+- Known: all weapon numbers are first-pass. Time-to-kill: 4 body shots or 2 headshots (108 dmg) kill 100 HP; 2-shot headshot kills probably need tuning. `H` is a dev key that damages the player so the health HUD can be exercised (no enemies exist yet).
+
 ## Not implemented yet
 
-Everything else: weapons (P4), rooms/lobby/sync (P5), competitive rules (P6), power grid/audio (P7), co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
+Everything else: rooms/lobby/sync (P5), competitive rules (P6), power grid/audio (P7), co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
 
-## Next: Phase 4 — Weapon system
+## Next: Phase 5 — Multiplayer

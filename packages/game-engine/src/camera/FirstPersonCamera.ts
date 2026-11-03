@@ -17,8 +17,9 @@ export class FirstPersonCamera {
     this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - dy * sensitivity));
   }
 
-  apply(x: number, y: number, z: number): void {
+  /** `recoil` is a temporary view offset (weapon kick) layered on the player's own aim. */
+  apply(x: number, y: number, z: number, recoil = { pitch: 0, yaw: 0 }): void {
     this.camera.position.set(x, y, z);
-    this.camera.rotation.set(this.pitch, this.yaw, 0);
+    this.camera.rotation.set(this.pitch + recoil.pitch, this.yaw + recoil.yaw, 0);
   }
 }
