@@ -15,13 +15,15 @@
     "dev": "concurrently -k -n server,web -c red,cyan \"npm run dev -w @zhb/server\" \"npm run dev -w @zhb/web\"",
     "dev:web": "npm run dev -w @zhb/web",
     "dev:server": "npm run dev -w @zhb/server",
-    "build": "npm run build -w @zhb/web",
+    "build": "npm run build -w @zhb/web && npm run build -w @zhb/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run format:check"
+    "check": "npm run typecheck && npm run lint && npm run test && npm run format:check",
+    "loadtest": "npm run loadtest -w @zhb/server --",
+    "audit": "npm audit --omit=dev --audit-level=high"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # typecheck + lint + all tests (incl. real-server integration and security tests) + formatting
+      - run: npm run check
+      # Fails only on HIGH+ issues in production dependencies (dev-tooling findings are reported, not gating).
+      - run: npm run audit
+      - run: npm run build
+
+  prod-smoke:
+    # Proves the production server bundle starts from an empty directory with only prod deps.
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @zhb/server
+      - name: Install production dependencies and boot
+        run: |
+          mkdir /tmp/prod && cp apps/server/dist/index.js apps/server/dist/package.json /tmp/prod/
+          cd /tmp/prod && npm install --omit=dev --no-audit --no-fund
+          PORT=2567 node index.js &
+          for i in $(seq 1 30); do curl -fs localhost:2567/ready && break; sleep 1; done
+          curl -fs localhost:2567/health
+          curl -fs "localhost:2567/metrics?format=prom" | grep zhb_sim_step_ms_p99
+      - name: Short load test against the production bundle
+        run: npm run loadtest -- --rooms 8 --players 4 --seconds 10

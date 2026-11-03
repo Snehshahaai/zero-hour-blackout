@@ -117,8 +117,12 @@ export class PlayerController {
     this.syncBody();
   }
 
-  /** Advance one fixed step (`FIXED_DT`). */
-  update(input: MoveInput): void {
+  /**
+   * Advance one fixed step (`FIXED_DT`). By default the physics world is stepped afterwards so
+   * queries see the new position; a server simulating many players passes `step = false` and
+   * steps the shared world once per tick instead (see `PhysicsWorld.refreshQueries`).
+   */
+  update(input: MoveInput, step = true): void {
     const dt = FIXED_DT;
     const s = this.state;
 
@@ -173,7 +177,7 @@ export class PlayerController {
     s.eyeHeight += (targetEye - s.eyeHeight) * Math.min(1, MOVEMENT.eyeSmoothing * dt);
 
     this.syncBody();
-    this.physics.world.step();
+    if (step) this.physics.world.step();
   }
 
   private updateCrouch(wantCrouch: boolean): void {

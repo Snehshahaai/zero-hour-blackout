@@ -1031,3 +1031,7 @@ input[aria-invalid='true'] {
   width: 260px;
   margin: 2px auto;
 }
+
+.support-warning {
+  margin: 12px 28px 0;
+}

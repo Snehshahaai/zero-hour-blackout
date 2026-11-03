@@ -1,4 +1,5 @@
-import { createMapPreview, isWebGL2Supported, type MapPreview } from '@zhb/game-engine';
+import { createMapPreview, type MapPreview } from '@zhb/game-engine';
+import { isWebGL2Supported } from '@zhb/game-engine/detect';
 import { useEffect, useRef, useState } from 'react';
 import { useGraphicsQuality } from '../../hooks/useGraphicsQuality.ts';
 

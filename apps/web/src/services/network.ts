@@ -67,10 +67,30 @@ function writeSaved(token: string | null): void {
   }
 }
 
-function describe(e: unknown): string {
-  if (e instanceof Error && e.message) return e.message;
-  if (typeof e === 'string') return e;
-  return 'Could not reach the game server.';
+/**
+ * Turns Colyseus/matchmaker errors into messages a player can act on. Raw messages such as
+ * `room "ABC123" is locked` or `Internal Server Error` are never shown.
+ */
+export function describe(e: unknown): string {
+  const err = e as { code?: number; message?: string } | undefined;
+  const code = err?.code;
+  const msg = (typeof e === 'string' ? e : err?.message) ?? '';
+  if (code === 522 && /not found/i.test(msg))
+    return 'No room with that code. Check it and try again.';
+  if (code === 522 || /locked/i.test(msg))
+    return 'That room is full or its match has already started.';
+  if (code === 4002 || /player name/i.test(msg))
+    return 'That callsign is not allowed. Use 2-24 letters, numbers, spaces, _ . -';
+  if (code === 503 || /busy|full/i.test(msg))
+    return 'The server is busy right now. Please try again in a moment.';
+  if (code === 429 || /too many/i.test(msg))
+    return 'Too many connection attempts. Wait a few seconds and try again.';
+  if (code === 400) return 'The server rejected that request. Reload the page and try again.';
+  if (typeof code === 'number' && code >= 500) return 'The server had a problem. Please try again.';
+  if (/failed to fetch|network|econnrefused|websocket|load failed/i.test(msg) || !msg) {
+    return 'Could not reach the game server. Check your connection and try again.';
+  }
+  return 'Could not join. Please try again.';
 }
 
 /**

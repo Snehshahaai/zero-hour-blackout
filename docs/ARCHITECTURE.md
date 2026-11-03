@@ -79,3 +79,11 @@
 - Nav edges come from `PhysicsWorld.segmentClear` (three parallel knee-height rays) at graph-build time, so hand-placed nodes are the only thing that can be wrong; the nav tests catch bad nodes (two were found: inside pipes and next to a crate).
 - `MatchRoom` picks `RoundManager`+`PowerGrid` (competitive) or `CoopMission` (cooperative) at match start; both end by emitting `finished`, which resets the room to the lobby. Anything that emits from inside `stepSim` must stop the tick if the sim was torn down (a regression found by the lifecycle test).
 - Replicated `sim` players now include bots (`isBot`); clients exclude them from the scoreboard/teammates and tint them hostile. Dead bots are removed from the sim after 3 s.
+
+## Release engineering notes (Phase 9)
+
+- The server ships as an esbuild bundle of our TypeScript + `@zhb/*` workspace packages; third-party packages stay external and are pinned in a generated `dist/package.json`. The build asserts the pinned copy satisfies the declared range (hoisting once picked a stale Rapier).
+- `@zhb/game-engine` has three entry points: `.` (full engine, browser), `./sim` (DOM-free simulation shared with the server), `./detect` (capability checks, no heavy deps). It is `sideEffects: false` so Vite can code-split; the menu must never import the index at runtime.
+- Room lifetime: Colyseus auto-disposes only when the last _client_ disconnects; rooms whose players all expire out of the reconnect grace are closed explicitly.
+- Limits are configuration (`Limits` in `services/guards.ts`, env vars in `.env.example`), enforced server-side; tests pass tight limits to prove they bite.
+- Close code 1006 covers both network drops and oversized-message kicks; they cannot be told apart server-side (documented in SECURITY.md).

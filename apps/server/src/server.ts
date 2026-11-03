@@ -1,8 +1,16 @@
 import { defineRoom, defineServer, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { MATCH_ROOM_NAME } from '@zhb/shared';
-import type { CoopRules, PowerRules, RoundRules, Weather } from '@zhb/shared';
+import {
+  MATCH_ROOM_NAME,
+  RECONNECT_GRACE_SECONDS,
+  type CoopRules,
+  type PowerRules,
+  type RoundRules,
+  type Weather,
+} from '@zhb/shared';
 import type { ServerConfig } from './config.ts';
+import { DEFAULT_LIMITS, UpgradeGuard, type Limits } from './services/guards.ts';
+import { metrics } from './services/metrics.ts';
 import { MatchRoom } from './rooms/MatchRoom.ts';
 import { createRoutes } from './routes.ts';
 
@@ -13,8 +21,15 @@ export function createGameServer(
     powerRules?: Partial<PowerRules>;
     coopRules?: Partial<CoopRules>;
     weather?: Weather;
+    metricsToken?: string | undefined;
+    limits?: Partial<Limits>;
+    reconnectGraceSeconds?: number;
   } = {},
 ) {
+  const limits: Limits = { ...DEFAULT_LIMITS, ...options.limits };
+  const guard = new UpgradeGuard(config.CLIENT_ORIGINS, limits);
+  MatchRoom.maxRooms = limits.maxRooms;
+  MatchRoom.reconnectGraceSeconds = options.reconnectGraceSeconds ?? RECONNECT_GRACE_SECONDS;
   MatchRoom.roundRules = options.roundRules ?? {};
   MatchRoom.powerRules = options.powerRules ?? {};
   MatchRoom.coopRules = options.coopRules ?? {};
@@ -30,12 +45,23 @@ export function createGameServer(
   };
 
   return defineServer({
-    transport: new WebSocketTransport(),
+    transport: new WebSocketTransport({
+      // Real messages are ~150 B; anything bigger is abuse and is dropped by the socket layer.
+      maxPayload: limits.maxPayloadBytes,
+      pingInterval: 3000,
+      pingMaxRetries: 3,
+      beforeUpgrade: (request, context) => {
+        const verdict = guard.check(request.headers.get('origin'), context.ip);
+        if (verdict.ok) return;
+        metrics.counters.upgradesRejected++;
+        return new Response(verdict.message, { status: verdict.status });
+      },
+    }),
     rooms: {
       // Public quick-play only pairs players who asked for the same visibility/format/mode.
       [MATCH_ROOM_NAME]: defineRoom(MatchRoom).filterBy(['visibility', 'format', 'mode']),
     },
-    routes: createRoutes(Date.now()),
+    routes: createRoutes(Date.now(), options.metricsToken, limits),
     greet: false,
   });
 }

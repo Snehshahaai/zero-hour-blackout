@@ -4,7 +4,7 @@
 
 Browser-based tactical multiplayer FPS. React + TypeScript + Vite, Three.js, Colyseus (authoritative server), Zod.
 
-**Status: Phase 1 (project foundation) complete. There is no gameplay yet.** See [docs/CHECKLIST.md](docs/CHECKLIST.md).
+**Status: feature-complete first version (phases 1-8) with release tooling (phase 9). Not yet deployed or tested on real GPUs/other browsers; see [docs/CHECKLIST.md](docs/CHECKLIST.md) for exactly what is and is not done.**
 
 ## Requirements
 
@@ -17,7 +17,9 @@ npm install          # install all workspaces
 npm run dev          # server (:2567) + web (:5173) together
 npm run dev:web      # web only
 npm run dev:server   # server only
-npm run build        # typecheck + production build of the web app
+npm run build        # production build of the web app and the server bundle
+npm run loadtest     # multiplayer load test against a running server (see docs/PERFORMANCE.md)
+npm run audit        # fails on high-severity production dependency advisories
 npm run check        # typecheck + lint + tests + format check (run before committing)
 ```
 
@@ -33,4 +35,6 @@ Copy `.env.example` to `.env` to override server settings (`PORT`, `CLIENT_ORIGI
 | `packages/shared`      | Constants, types and Zod schemas shared by client and server      |
 | `assets`, `docs`       | Source art/audio (empty so far) and documentation                 |
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for decisions and trade-offs.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for decisions and trade-offs,
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for deploying and operating it, [docs/SECURITY.md](docs/SECURITY.md) for the
+security model and its known gaps, and [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for measured performance.

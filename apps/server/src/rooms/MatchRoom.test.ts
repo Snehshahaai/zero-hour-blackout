@@ -11,6 +11,7 @@ const server = createGameServer(
     roundRules: { freezeSeconds: 0.3, roundSeconds: 60, matchEndSeconds: 0.5 },
     coopRules: { briefingSeconds: 0.3, timeLimitSeconds: 1.5, resultSeconds: 0.4 },
     weather: 'rain',
+    reconnectGraceSeconds: 1,
   },
 );
 const url = `ws://localhost:${PORT}`;
@@ -343,4 +344,29 @@ describe('MatchRoom (end-to-end)', () => {
     await until(() => host.state.phase === 'lobby', 'returns to lobby', 6000);
     expect(host.state.sim.size).toBe(0);
   }, 25000);
+
+  it('exposes /ready and /metrics (JSON and Prometheus) after a match has run', async () => {
+    const ready = await fetch(`http://localhost:${PORT}/ready`);
+    expect(ready.status).toBe(200);
+    const m = (await (await fetch(`http://localhost:${PORT}/metrics`)).json()) as {
+      simStepMs: { count: number; p99: number };
+      counters: { roomsCreated: number; matchesStarted: number };
+      rooms: number;
+    };
+    expect(m.counters.roomsCreated).toBeGreaterThan(0);
+    expect(m.counters.matchesStarted).toBeGreaterThan(0);
+    expect(m.simStepMs.count).toBeGreaterThan(0);
+    const prom = await (await fetch(`http://localhost:${PORT}/metrics?format=prom`)).text();
+    expect(prom).toContain('zhb_sim_step_ms_p99');
+  });
+
+  it('a room whose last player drops without leaving is disposed after the grace period (no zombie rooms)', async () => {
+    const host = await create('Solo', { format: '1v1' });
+    const code = host.roomId;
+    await until(() => host.state.roomCode === code, 'state');
+    (host.connection as unknown as { transport: { ws: WebSocket } }).transport.ws.close(3999);
+    // Seat is held while the grace period runs, then the player is removed and the room must close.
+    await new Promise((r) => setTimeout(r, 2500));
+    await expect(joinCode(code, 'Late')).rejects.toBeDefined(); // the room no longer exists
+  }, 15000);
 });

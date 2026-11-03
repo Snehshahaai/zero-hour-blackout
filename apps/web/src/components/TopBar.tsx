@@ -1,4 +1,4 @@
-import { THREE_REVISION, isWebGL2Supported } from '@zhb/game-engine';
+import { isWebGL2Supported } from '@zhb/game-engine/detect';
 import { GAME_NAME } from '@zhb/shared';
 import { NAV_ROUTES, type NavRoute, type Route } from '../hooks/useHashRoute.ts';
 import type { ServerStatus } from '../services/serverStatus.ts';
@@ -45,7 +45,7 @@ export function TopBar({ route, onNavigate, serverStatus }: Props) {
         <span className="status-sep" aria-hidden="true">
           |
         </span>
-        <span title={`three r${THREE_REVISION}`}>WEBGL2 {WEBGL2 ? 'OK' : 'UNSUPPORTED'}</span>
+        <span>WEBGL2 {WEBGL2 ? 'OK' : 'UNSUPPORTED'}</span>
       </div>
     </header>
   );

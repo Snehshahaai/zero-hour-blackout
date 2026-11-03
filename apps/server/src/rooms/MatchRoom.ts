@@ -29,6 +29,7 @@ import {
   uniqueName,
 } from './lobbyRules.ts';
 import { MAP_01, initPhysics } from '@zhb/game-engine/sim';
+import { metrics } from '../services/metrics.ts';
 import { MatchSim, type SimEvent } from '../sim/MatchSim.ts';
 import { CoopMission, type MissionEvent } from '../sim/CoopMission.ts';
 import { PowerGrid, type PowerEvent } from '../sim/PowerGrid.ts';
@@ -75,6 +76,10 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   static roundRules: Partial<RoundRules> = {};
   static powerRules: Partial<PowerRules> = {};
   static coopRules: Partial<CoopRules> = {};
+  /** Process-wide cap on simultaneous rooms (configured by `createGameServer`). */
+  static maxRooms = Infinity;
+  /** How long a dropped player's seat is held for reconnection. */
+  static reconnectGraceSeconds: number = RECONNECT_GRACE_SECONDS;
   /** Forces the weather (tests/ops). Unset = random per match, decided by the server. */
   static weatherOverride: Weather | null = null;
   private sim: MatchSim | null = null;
@@ -87,15 +92,19 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   override async onCreate(options: unknown): Promise<void> {
     // Options are validated again here even though onAuth validated the creator's name:
     // format/mode/visibility decide capacity and matchmaking.
+    if (matchMaker.stats.local.roomCount >= MatchRoom.maxRooms) {
+      throw new ServerError(503, 'Server is busy, try again shortly');
+    }
     const parsed = createRoomOptionsSchema.safeParse(options);
-    if (!parsed.success) throw new ServerError(4000, 'Invalid room options');
+    if (!parsed.success) throw new ServerError(400, 'Invalid room options');
     const { format, mode, visibility } = parsed.data;
 
     let code = randomCode();
     for (let i = 0; i < 20 && (await matchMaker.getRoomById(code)); i++) code = randomCode();
     if (await matchMaker.getRoomById(code))
-      throw new ServerError(4001, 'Could not allocate a room code');
+      throw new ServerError(503, 'Could not allocate a room code');
     this.roomId = code;
+    metrics.counters.roomsCreated++;
 
     this.maxClients = roomCapacity(format, mode);
     this.state.roomCode = code;
@@ -132,6 +141,8 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     if (!player) return;
     // A clean leave, or a kick for a protocol violation (malformed message), frees the slot
     // immediately. Only genuine connection drops get the reconnection grace period.
+    // NOTE: an oversized-message disconnect surfaces as 1006, indistinguishable from a real network
+    // drop, so such a client does hold its seat for the grace period (bounded; see docs/SECURITY.md).
     const dropped = code !== CloseCode.CONSENTED && code !== CloseCode.WITH_ERROR;
 
     if (dropped) {
@@ -140,7 +151,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       if (simPlayer) simPlayer.queue.length = 0;
       this.cancelCountdown(); // a missing player invalidates a pending start
       try {
-        const rejoined = await this.allowReconnection(client, RECONNECT_GRACE_SECONDS);
+        const rejoined = await this.allowReconnection(client, MatchRoom.reconnectGraceSeconds);
         player.connected = true;
         this.limiter.forget(client.sessionId);
         void rejoined;
@@ -187,6 +198,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
 
     input: validate(inputMessageSchema, (client, msg) => {
       if (!this.sim || !this.inputLimiter.allow(client.sessionId)) return;
+      metrics.counters.inputsAccepted++;
       this.sim.queueInput(client.sessionId, msg);
     }),
 
@@ -214,6 +226,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       this.state.sim.set(p.id, new SimPlayerSchema());
     }
     this.sim = sim;
+    metrics.counters.matchesStarted++;
     this.state.weather = MatchRoom.weatherOverride ?? pickWeather();
     if (this.state.mode === 'cooperative') {
       this.coop = new CoopMission(sim, MAP_01, (e) => this.onMissionEvent(e), MatchRoom.coopRules);
@@ -237,6 +250,15 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   private stepSim(): void {
     const sim = this.sim;
     if (!sim) return;
+    const t0 = performance.now();
+    try {
+      this.stepSimInner(sim);
+    } finally {
+      metrics.simStepMs.record(performance.now() - t0);
+    }
+  }
+
+  private stepSimInner(sim: MatchSim): void {
     sim.step();
     this.rounds?.step();
     if (this.sim !== sim) return; // the round manager ended the match and reset the room
@@ -339,6 +361,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
 
   /** Match is over: tear down the simulation and return everyone to the lobby, unready. */
   private resetToLobby(): void {
+    metrics.counters.matchesFinished++;
     this.sim?.dispose();
     this.sim = null;
     this.rounds = null;
@@ -401,6 +424,14 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.cancelCountdown();
     if (this.state.hostId === id) {
       this.state.hostId = pickHost(this.state.players.values()) ?? '';
+    }
+    // Everyone is gone (e.g. all tabs closed and the reconnect grace expired). Colyseus only
+    // auto-disposes when the last *client* disconnects, which has already happened by now, so
+    // without this the room would sit empty forever and eat into the room cap.
+    if (this.state.players.size === 0) {
+      this.clock.setTimeout(() => {
+        if (this.state.players.size === 0) void this.disconnect().catch(() => undefined);
+      }, 0);
     }
   }
 

@@ -106,8 +106,32 @@
 - [ ] Not verified: a human clearing all hostiles and securing both sites in a real browser (the logic is covered by `CoopMission` tests; walking it under software rendering was impractical), balance/difficulty tuning, bot performance with many players
 - Known: bots only see through open doors; the single mission is short and its difficulty is untuned. Bot pathing assumes doors stay open (the power-grid door is not active in co-op).
 
-## Not implemented yet
+## Phase 9: Public release preparation — PARTIAL (everything that can be verified without your accounts/hardware)
 
-Everything else: deployment and hardening (P9). The home-screen buttons are intentionally disabled.
+Done and verified:
 
-## Next: Phase 9 — Public release (deployment, testing, hardening)
+- [x] **Production server build**: esbuild bundle (92 KB) + generated `dist/package.json` pinning the _tested_ dependency versions; verified running from an empty directory with only production deps (44 MB), and load-tested in that form. The build now refuses to ship a dependency copy that doesn't satisfy the declared range (caught a real bug: it had pinned the wrong, hoisted Rapier 0.12 instead of the tested 0.21).
+- [x] **Observability**: `/health`, `/ready`, `/metrics` (JSON + Prometheus, optional bearer token): sim tick p50/p95/p99/max, event-loop lag, memory, counters; self-hosted browser error reporting (`/client-errors`) + React error boundary; JSON log lines; process-level safety nets
+- [x] **Load testing**: `npm run loadtest` (N rooms x P bots at 60 Hz) and `simbench`; results in `docs/PERFORMANCE.md` (160 clients / 40 rooms: tick p99 1.5 ms, 0 disconnects)
+- [x] **Security hardening + 12 tests**: WebSocket Origin check, per-IP connection budget, max message size, room cap, fuzzing of every message type, hostile names, oversized payloads, CORS non-reflection, metrics token, error-endpoint abuse limits; CSP and security headers verified in a real browser; player-facing error messages
+- [x] **Bugs found by this work and fixed**: zombie rooms that never closed after all players dropped (would have exhausted the room cap); `onCreate` errors surfacing as "Internal Server Error"; wrong Rapier version in the prod manifest; a raw `room is locked` message shown to players
+- [x] **Client payload**: entry chunk 5.4 MB -> 500 KB (154 KB gzip); physics/3D lazy-loaded (verified in a browser); browser-capability check with a clear warning
+- [x] CI workflow (check, audit, build, production-bundle smoke + short load test), `Dockerfile`, `render.yaml`, `.env.example`, docs: DEPLOYMENT, SECURITY, PERFORMANCE
+- [x] 145 tests
+
+NOT done (needs you, or is a bigger decision):
+
+- [ ] **Actual deployment** (needs a hosting account; `render.yaml`/`Dockerfile` are untested against Render/Docker — no daemon here)
+- [ ] **PostgreSQL / accounts / persistence / friends / profile** — deliberately not built: it needs a product decision (guest vs accounts). See docs/SECURITY.md "Open decisions"
+- [ ] **Real-GPU frame-rate targets**, long-session memory, mid-range hardware
+- [ ] **Browser compatibility beyond Chromium** (Firefox, Safari, Edge, macOS) — only Chromium is installed here
+- [ ] Horizontal scaling (single instance only), soak test, internet-latency testing
+- [ ] Anti-cheat beyond server authority (aim/ESP), moderation tools, bans
+- [ ] Legal/licensing review of the (all-procedural, original) assets; privacy policy; analytics consent
+
+## Next steps (suggested order)
+
+1. Deploy to a staging environment (see docs/DEPLOYMENT.md) and play real matches with friends.
+2. Decide on accounts, then add PostgreSQL profiles/stats.
+3. Measure on real GPUs/browsers; fix what that finds; set frame-rate targets.
+4. Replace procedural placeholders with authored assets (Blender), tune weapons/map balance with playtests.

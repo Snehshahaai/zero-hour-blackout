@@ -217,6 +217,7 @@ export class MatchSim {
       }
       this.stepPlayer(p);
     }
+    this.physics.refreshQueries(); // one world step for every player moved this tick
     this.recordHistory();
   }
 
@@ -255,14 +256,18 @@ export class MatchSim {
     p.interact = input.interact;
 
     const c = p.controller;
-    c.update({
-      forward: input.forward,
-      right: input.right,
-      jump: input.jump,
-      sprint: input.sprint,
-      crouch: input.crouch,
-      yaw: input.yaw,
-    });
+    // Many players share one physics world: step it once per tick (in `step()`), not per player.
+    c.update(
+      {
+        forward: input.forward,
+        right: input.right,
+        jump: input.jump,
+        sprint: input.sprint,
+        crouch: input.crouch,
+        yaw: input.yaw,
+      },
+      false,
+    );
     const s = c.state;
     const events = p.weapon.update(
       FIXED_DT,

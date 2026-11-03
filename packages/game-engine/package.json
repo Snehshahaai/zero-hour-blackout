@@ -5,17 +5,19 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./sim": "./src/sim.ts"
+    "./sim": "./src/sim.ts",
+    "./detect": "./src/detect.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@dimforge/rapier3d-compat": "0.21.0",
     "@zhb/shared": "*",
     "three": "^0.187.0"
   },
   "devDependencies": {
     "@types/three": "^0.187.0"
-  }
+  },
+  "sideEffects": false
 }
