@@ -1,10 +1,12 @@
 import {
+  POWER_RULES,
   ROUND_RULES,
   type BombState,
   type GraphicsQuality,
   type InputMessage,
   type RoundPhase,
   type Team,
+  type Weather as WeatherKind,
 } from '@zhb/shared';
 import {
   CapsuleGeometry,
@@ -14,7 +16,8 @@ import {
   BoxGeometry,
   SphereGeometry,
 } from 'three';
-import { AudioEngine } from './audio/AudioEngine.ts';
+import { AudioEngine, type SoundName } from './audio/AudioEngine.ts';
+import { HEARING_RANGE, StrideTracker, gaitFor, jitterPosition } from './audio/spatial.ts';
 import { FirstPersonCamera } from './camera/FirstPersonCamera.ts';
 import { MOVEMENT } from './entities/movement.ts';
 import { PlayerController, type MoveInput } from './entities/PlayerController.ts';
@@ -27,9 +30,11 @@ import { ViewModel } from './rendering/ViewModel.ts';
 import { GameLoop } from './systems/GameLoop.ts';
 import { HX27 } from './weapons/WeaponDef.ts';
 import { WeaponSim } from './weapons/WeaponSim.ts';
-import { buildMap, type ProgressFn } from './world/buildMap.ts';
+import { buildMap, type BuiltMap, type ProgressFn } from './world/buildMap.ts';
 import { MAP_01 } from './world/map01.ts';
 import { siteAt } from './world/objectives.ts';
+import { isIndoor, surfaceAt, zoneAt } from './world/zones.ts';
+import { Weather } from './rendering/Weather.ts';
 import type { HitKind } from './Sandbox.ts';
 
 // ---- Network contract (the web app adapts a Colyseus room to this; the engine has no Colyseus dep) ----
@@ -90,8 +95,22 @@ export interface NetBombEvent {
   site: string;
 }
 
+export interface NetPowerState {
+  cut: boolean;
+  secondsLeft: number;
+  cooldownLeft: number;
+}
+export interface NetPowerEvent {
+  event: 'cut' | 'restored';
+  zone: string;
+  by: string;
+}
+
 export interface MatchSnapshot {
   tick: number;
+  power: Record<string, NetPowerState>;
+  doors: Record<string, { closed: boolean }>;
+  weather: WeatherKind;
   round: RoundInfo;
   /** Server time in ms; remote players are interpolated against this clock. */
   timeMs: number;
@@ -126,6 +145,7 @@ export interface MatchNet {
   onKill(cb: (e: NetKill) => void): () => void;
   onRound(cb: (e: NetRoundEvent) => void): () => void;
   onBomb(cb: (e: NetBombEvent) => void): () => void;
+  onPower(cb: (e: NetPowerEvent) => void): () => void;
 }
 
 export interface ScoreRow {
@@ -160,6 +180,9 @@ export interface MatchHud {
   teammates: { name: string; health: number; alive: boolean }[];
   /** Set once the match is decided. */
   result: { won: boolean; reason: string } | null;
+  weather: WeatherKind;
+  /** Active outage, if any. */
+  power: { label: string; secondsLeft: number } | null;
 }
 
 export interface MatchGame {
@@ -196,6 +219,8 @@ interface Sample {
   crouching: boolean;
 }
 interface Remote {
+  tracker: StrideTracker;
+  last: { x: number; y: number; z: number } | null;
   group: Group;
   samples: Sample[];
   alive: boolean;
@@ -221,7 +246,7 @@ export async function createMatchGame(
 ): Promise<MatchGame> {
   await initPhysics();
   const gr = new GameRenderer(canvas, quality);
-  let map;
+  let map: BuiltMap;
   try {
     map = await buildMap(MAP_01, gr.quality, onProgress);
   } catch (e) {
@@ -262,6 +287,13 @@ export async function createMatchGame(
   let roundPhase: RoundPhase = 'freeze';
   let bombTimeLeft = 0;
   let bombSite = '';
+  const weather = new Weather(gr.scene);
+  audio.setHrtf(quality !== 'low');
+  let weatherKind: WeatherKind | null = null;
+  let powerState: Record<string, NetPowerState> = {};
+  let ambientScale = 1;
+  let envClock = 0;
+  const ownStride = new StrideTracker();
   let beepClock = 0;
   let fps = 60;
   const prev = { x: spawn[0], y: 0.05, z: spawn[1], eye: Number(MOVEMENT.standEye) };
@@ -291,6 +323,8 @@ export async function createMatchGame(
     progress: 0,
     teammates: [],
     result: null,
+    weather: 'clear',
+    power: null,
   };
   const snapshotHud = (): MatchHud => ({
     ...hud,
@@ -299,6 +333,7 @@ export async function createMatchGame(
     teammates: [...hud.teammates],
     round: { ...hud.round },
     bomb: { ...hud.bomb },
+    power: hud.power ? { ...hud.power } : null,
   });
   const emitHud = () => {
     const snap = snapshotHud();
@@ -331,7 +366,7 @@ export async function createMatchGame(
     group.add(body, head, gun);
     group.visible = false;
     gr.scene.add(group);
-    return { group, samples: [], alive: p.alive, mat };
+    return { tracker: new StrideTracker(), last: null, group, samples: [], alive: p.alive, mat };
   };
 
   // ---- snapshots ----
@@ -368,6 +403,7 @@ export async function createMatchGame(
       remotes.delete(id);
     }
 
+    applyEnvironment(snap);
     const me = snap.players[net.mySessionId];
     const ri = snap.round;
     roundPhase = ri.phase;
@@ -391,6 +427,7 @@ export async function createMatchGame(
         .filter((p) => p.team === me.team && p.id !== me.id)
         .map((p) => ({ name: p.name, health: p.health, alive: p.alive }));
       hud.prompt = computePrompt(me, ri);
+      hud.weather = snap.weather;
       hud.ammo = me.ammo;
       hud.reserve = me.reserve;
       hud.reloading = me.reloading;
@@ -465,19 +502,58 @@ export async function createMatchGame(
     Object.assign(prev, curr);
   }
 
+  /** Mirrors server-owned power, door and weather state into lights, collision and effects. */
+  function applyEnvironment(snap: MatchSnapshot): void {
+    for (const [zone, st] of Object.entries(snap.power ?? {})) {
+      const was = powerState[zone]?.cut ?? false;
+      if (st.cut !== was) map.setZoneCut(zone, st.cut);
+    }
+    powerState = snap.power ?? {};
+    const cutZone = Object.entries(powerState).find(([, v]) => v.cut);
+    hud.power = cutZone
+      ? {
+          label: MAP_01.zones.find((z) => z.id === cutZone[0])?.label ?? cutZone[0],
+          secondsLeft: cutZone[1].secondsLeft,
+        }
+      : null;
+    for (const [id, d] of Object.entries(snap.doors ?? {})) {
+      physics.setDoorClosed(id, d.closed);
+      map.setDoorClosed(id, d.closed);
+    }
+    if (weatherKind !== snap.weather) {
+      weatherKind = snap.weather;
+      weather.set(snap.weather, gr.quality.rainDrops);
+    }
+  }
+
+  function panelPrompt(): string | null {
+    const s = player.state;
+    if (Object.values(powerState).some((z) => z.cut)) return null;
+    for (const panel of MAP_01.panels) {
+      const z = powerState[panel.zone];
+      if (!z || z.cooldownLeft > 0) continue;
+      if (Math.hypot(s.x - panel.pos[0], s.z - panel.pos[1]) > POWER_RULES.panelReach) continue;
+      const label = MAP_01.zones.find((q) => q.id === panel.zone)?.label ?? panel.zone;
+      return `Hold E to cut power: ${label}`;
+    }
+    return null;
+  }
+
   function computePrompt(me: NetPlayer, ri: RoundInfo): string | null {
     if (!me.alive || (ri.phase !== 'live' && ri.phase !== 'planted')) return null;
     const s = player.state;
     if (ri.bombState === 'planted') {
-      if (me.side !== 'defenders') return null;
+      if (me.side !== 'defenders') return panelPrompt();
       const o = MAP_01.objectives.find((x) => x.id === ri.bombSite);
       if (o && Math.hypot(s.x - o.center[0], s.z - o.center[1]) <= ROUND_RULES.defuseRange)
         return 'Hold E to defuse';
-      return null;
+      return panelPrompt();
     }
-    if (me.side !== 'attackers') return null;
-    const site = siteAt(MAP_01, s.x, s.z, ROUND_RULES.plantRadiusBonus);
-    return site ? `Hold E to plant at site ${site.id}` : null;
+    if (me.side === 'attackers') {
+      const site = siteAt(MAP_01, s.x, s.z, ROUND_RULES.plantRadiusBonus);
+      if (site) return `Hold E to plant at site ${site.id}`;
+    }
+    return panelPrompt();
   }
 
   const pushFeed = (line: string) => {
@@ -494,8 +570,11 @@ export async function createMatchGame(
     if (e.shooter !== net.mySessionId) {
       effects.tracer(e.from, e.to);
       if (e.hit !== 'none') effects.impact(e.to, e.normal, e.hit === 'player');
-      const d = Math.hypot(e.from.x - curr.x, e.from.y - curr.y, e.from.z - curr.z);
-      audio.play('shot', Math.max(0.08, 0.7 * (1 - d / 70)));
+      audio.playAt('shot', e.from, {
+        gain: 1,
+        occluded: isOccluded(e.from),
+        indoor: isIndoor(MAP_01, curr.x, curr.z),
+      });
     }
   });
   const offHit = net.onHit((e) => {
@@ -570,6 +649,34 @@ export async function createMatchGame(
       bombLed.emissiveIntensity = Math.max(0, bombLed.emissiveIntensity - dt * 18);
     }
   }
+
+  /** Is a wall/door between the listener's head and `src`? (One ray: basic occlusion.) */
+  function isOccluded(src: Point3): boolean {
+    const e = { x: curr.x, y: curr.y + curr.eye, z: curr.z };
+    const dx = src.x - e.x;
+    const dy = src.y - e.y;
+    const dz = src.z - e.z;
+    const dist = Math.hypot(dx, dy, dz);
+    if (dist < 0.5) return false;
+    const hit = hitscan.cast(
+      e,
+      { x: dx / dist, y: dy / dist, z: dz / dist },
+      dist - 0.25,
+      player.collider,
+    );
+    return hit.kind === 'world';
+  }
+
+  const offPower = net.onPower((e) => {
+    const label = MAP_01.zones.find((z) => z.id === e.zone)?.label ?? e.zone;
+    if (e.event === 'cut') {
+      audio.play('powerDown', 0.7);
+      pushFeed(`Power cut: ${label}${e.by ? ` (${nameOf(e.by)})` : ''}`);
+    } else {
+      audio.play('powerUp', 0.6);
+      pushFeed(`Backup power restored: ${label}`);
+    }
+  });
 
   const cues = { magOut: false, magIn: false, chamber: false };
   const eye = (): Point3 => ({ x: curr.x, y: curr.y + curr.eye, z: curr.z });
@@ -662,6 +769,22 @@ export async function createMatchGame(
             }
           }
         }
+        // Own footsteps: quiet, non-positional, surface-dependent. Crouching is silent.
+        const step = Math.hypot(s.x - prev.x, s.z - prev.z);
+        const gait = s.grounded ? gaitFor(step * 60, s.crouching) : null;
+        if (gait) {
+          const n = ownStride.advance(step, gait.stride);
+          if (n > 0) {
+            const surface = surfaceAt(MAP_01, s.x, s.z);
+            const sound: SoundName =
+              surface === 'metal'
+                ? 'stepMetal'
+                : surface === 'asphalt'
+                  ? 'stepAsphalt'
+                  : 'stepConcrete';
+            audio.play(sound, 0.28 * gait.gain);
+          }
+        }
         curr.x = s.x;
         curr.y = s.y;
         curr.z = s.z;
@@ -705,7 +828,62 @@ export async function createMatchGame(
           r.group.position.set(lerp(a.x, b.x, k), lerp(a.y, b.y, k), lerp(a.z, b.z, k));
           r.group.rotation.y = lerpAngle(a.yaw, b.yaw, k);
           r.group.scale.y = b.crouching ? 0.72 : 1;
+
+          // Remote footsteps: derived from observed motion, positional, occluded by walls, with
+          // position jitter so sound alone never reveals an exact location. Crouch-walking is silent.
+          const p = r.group.position;
+          if (r.last && frameDt > 0) {
+            const dist = Math.hypot(p.x - r.last.x, p.z - r.last.z);
+            const rising = Math.abs(p.y - r.last.y) / frameDt > 1.2; // jumping/falling
+            const gait = rising ? null : gaitFor(dist / frameDt, b.crouching);
+            if (gait && dist < 1) {
+              const n = r.tracker.advance(dist, gait.stride);
+              const listenDist = Math.hypot(p.x - curr.x, p.z - curr.z);
+              if (n > 0 && listenDist < HEARING_RANGE.footsteps) {
+                const src = { x: p.x, y: p.y + 0.1, z: p.z };
+                const surface = surfaceAt(MAP_01, p.x, p.z);
+                const sound: SoundName =
+                  surface === 'metal'
+                    ? 'stepMetal'
+                    : surface === 'asphalt'
+                      ? 'stepAsphalt'
+                      : 'stepConcrete';
+                audio.playAt(sound, jitterPosition(src, 1.4), {
+                  gain: gait.gain,
+                  occluded: isOccluded(src),
+                  indoor: isIndoor(MAP_01, curr.x, curr.z),
+                });
+              }
+            }
+          }
+          r.last = { x: p.x, y: p.y, z: p.z };
         }
+
+        // Listener pose, ambience bed, local blackout darkness, weather.
+        const camEye = { x: curr.x, y: curr.y + curr.eye, z: curr.z };
+        audio.setListener(
+          camEye.x,
+          camEye.y,
+          camEye.z,
+          fpCamera.yaw + weapon.recoil.yaw,
+          fpCamera.pitch + weapon.recoil.pitch,
+        );
+        const here = zoneAt(MAP_01, curr.x, curr.z);
+        const hereCut = here ? (powerState[here.id]?.cut ?? false) : false;
+        envClock += frameDt;
+        if (envClock > 0.25) {
+          envClock = 0;
+          audio.setEnvironment({
+            indoor: here?.indoor ?? false,
+            rain: weatherKind === 'rain',
+            powerCut: hereCut,
+          });
+        }
+        // Emergency lighting keeps a visibility floor (never black) so a cut is fair, not a trap.
+        const targetAmbient = hereCut ? 0.3 : 1;
+        ambientScale += (targetAmbient - ambientScale) * Math.min(1, frameDt * 6);
+        gr.setAmbientScale(ambientScale);
+        weather.update(frameDt, camEye, !(here?.indoor ?? false));
         updateBomb(frameDt);
         gr.render();
         if (frameDt > 0) fps += (1 / frameDt - fps) * 0.1;
@@ -731,6 +909,8 @@ export async function createMatchGame(
     },
     setQuality(q) {
       gr.setQuality(q);
+      audio.setHrtf(q !== 'low');
+      if (weatherKind) weather.set(weatherKind, gr.quality.rainDrops);
       map.setAnisotropy(gr.quality.anisotropy);
       map.setPointLightCount(gr.quality.maxPointLights);
     },
@@ -754,6 +934,8 @@ export async function createMatchGame(
       offKill();
       offRound();
       offBomb();
+      offPower();
+      weather.dispose();
       removeBomb();
       input.dispose();
       audio.dispose();

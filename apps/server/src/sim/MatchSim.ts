@@ -19,6 +19,8 @@ const MAX_REWIND_MS = 250;
 const HISTORY_TICKS = 30;
 const TICK_MS = 1000 / MATCH_TICK_RATE;
 const MAX_QUEUE = 8;
+/** A held interact key expires if no fresh input arrives for this many ticks (200 ms). */
+const INTERACT_STALE_TICKS = 12;
 /** Max stored input credit: absorbs network bursts without allowing speed-hacking. */
 const MAX_CREDIT = 4;
 
@@ -48,8 +50,10 @@ export interface SimPlayer {
   team: Team;
   /** Current side (attackers/defenders); swaps at halftime. Decides spawns and objectives. */
   side: Team;
-  /** Holding the interact key this tick. */
+  /** Holding the interact key (expires if the client stops sending inputs). */
   interact: boolean;
+  /** Ticks since this player last supplied an input. */
+  sinceInput: number;
   /** 0..1 progress of the plant/defuse this player is performing. */
   interactProgress: number;
   controller: PlayerController;
@@ -124,6 +128,7 @@ export class MatchSim {
       team,
       side: team,
       interact: false,
+      sinceInput: 0,
       interactProgress: 0,
       controller,
       weapon: new WeaponSim(HX27, (numericId * 2654435761) >>> 0),
@@ -193,7 +198,9 @@ export class MatchSim {
       return;
     }
     p.credit = Math.min(MAX_CREDIT, p.credit + 1);
+    let consumed = 0;
     while (p.credit >= 1 && p.queue.length > 0) {
+      consumed++;
       const input = p.queue.shift() as InputMessage;
       p.credit -= 1;
       p.ackSeq = input.seq;
@@ -201,6 +208,9 @@ export class MatchSim {
       this.applyInput(p, input);
       if (!p.alive) break;
     }
+    p.sinceInput = consumed > 0 ? 0 : p.sinceInput + 1;
+    // A client that went silent (lag spike, disconnect) must not keep "holding" a key forever.
+    if (p.sinceInput > INTERACT_STALE_TICKS) p.interact = false;
   }
 
   private applyInput(p: SimPlayer, input: InputMessage): void {
@@ -390,6 +400,21 @@ export class MatchSim {
       for (const p of moved) p.controller.restoreBody();
       this.physics.refreshQueries();
     };
+  }
+
+  /** Electronic doors are solid while closed (also blocks shots). */
+  setDoorClosed(id: string, closed: boolean): void {
+    this.physics.setDoorClosed(id, closed);
+  }
+
+  /** True if any living player is within `radius` metres (xz) of the point. */
+  anyoneNear(x: number, z: number, radius: number): boolean {
+    for (const p of this.players.values()) {
+      if (!p.alive) continue;
+      const s = p.controller.state;
+      if (Math.hypot(s.x - x, s.z - z) <= radius) return true;
+    }
+    return false;
   }
 
   dispose(): void {

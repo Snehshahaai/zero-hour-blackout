@@ -10,3 +10,4 @@ export * from './weapons/index.ts';
 export * from './world/MapData.ts';
 export * from './world/map01.ts';
 export * from './world/objectives.ts';
+export * from './world/zones.ts';

@@ -93,6 +93,9 @@ describe('stance rules', () => {
       cylinders: [],
       crates: [],
       lights: [],
+      zones: [],
+      panels: [],
+      doors: [],
       objectives: [],
       spawns: { attackers: [], defenders: [] },
     };

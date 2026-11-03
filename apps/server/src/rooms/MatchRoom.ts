@@ -5,7 +5,9 @@ import {
   MATCH_TICK_RATE,
   RECONNECT_GRACE_SECONDS,
   inputMessageSchema,
+  type PowerRules,
   type RoundRules,
+  type Weather,
   type Team,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
@@ -27,14 +29,27 @@ import {
 } from './lobbyRules.ts';
 import { MAP_01, initPhysics } from '@zhb/game-engine/sim';
 import { MatchSim, type SimEvent } from '../sim/MatchSim.ts';
+import { PowerGrid, type PowerEvent } from '../sim/PowerGrid.ts';
 import { RoundManager, type RoundEvent } from '../sim/RoundManager.ts';
-import { LobbyState, PlayerSchema, SimPlayerSchema } from './schema.ts';
+import {
+  DoorSchema,
+  LobbyState,
+  PlayerSchema,
+  SimPlayerSchema,
+  ZonePowerSchema,
+} from './schema.ts';
 
 interface Metadata {
   roomCode: string;
   visibility: RoomVisibility;
   format: MatchFormat;
   mode: GameMode;
+}
+
+/** Weather is cosmetic only; chosen by the server so every player in the match sees the same. */
+function pickWeather(): Weather {
+  const r = randomInt(100);
+  return r < 45 ? 'clear' : r < 70 ? 'fog' : 'rain';
 }
 
 function randomCode(): string {
@@ -56,8 +71,12 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   private readonly inputLimiter = new RateLimiter(120, 140);
   /** Server-side round timing; set by `createGameServer` (tests use short rounds). Never client-controlled. */
   static roundRules: Partial<RoundRules> = {};
+  static powerRules: Partial<PowerRules> = {};
+  /** Forces the weather (tests/ops). Unset = random per match, decided by the server. */
+  static weatherOverride: Weather | null = null;
   private sim: MatchSim | null = null;
   private rounds: RoundManager | null = null;
+  private power: PowerGrid | null = null;
   private joinCounter = 0;
   private countdownTimer: { clear(): void } | null = null;
 
@@ -134,6 +153,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.sim?.dispose();
     this.sim = null;
     this.rounds = null;
+    this.power = null;
   }
 
   override messages = {
@@ -183,6 +203,10 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       this.state.sim.set(p.id, new SimPlayerSchema());
     }
     this.sim = sim;
+    this.power = new PowerGrid(sim, MAP_01, (e) => this.onPowerEvent(e), MatchRoom.powerRules);
+    for (const panel of MAP_01.panels) this.state.power.set(panel.zone, new ZonePowerSchema());
+    for (const door of MAP_01.doors) this.state.doors.set(door.id, new DoorSchema());
+    this.state.weather = MatchRoom.weatherOverride ?? pickWeather();
     this.rounds = new RoundManager(sim, MAP_01, (e) => this.onRoundEvent(e), MatchRoom.roundRules);
     this.rounds.start();
     this.patchRate = 50; // 20 Hz state broadcast; the sim itself ticks at 60 Hz
@@ -195,6 +219,20 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     sim.step();
     this.rounds?.step();
     const r = this.rounds;
+    if (this.power && r) {
+      this.power.step(r.phase === 'live' || r.phase === 'planted');
+      for (const [zone, z] of this.power.zones) {
+        const view = this.state.power.get(zone);
+        if (!view) continue;
+        view.cut = z.cut;
+        view.secondsLeft = Math.round(z.left * 10) / 10;
+        view.cooldownLeft = Math.round(z.cooldown * 10) / 10;
+      }
+      for (const [id, closed] of this.power.doorsClosed) {
+        const view = this.state.doors.get(id);
+        if (view) view.closed = closed;
+      }
+    }
     if (r) {
       this.state.roundPhase = r.phase;
       this.state.roundNumber = r.round;
@@ -243,7 +281,12 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       this.resetToLobby();
       return;
     }
+    if (e.type === 'roundStart') this.power?.reset();
     this.broadcast(e.type === 'bomb' ? 'bomb' : 'round', e);
+  }
+
+  private onPowerEvent(e: PowerEvent): void {
+    if (e.type === 'power') this.broadcast('power', e);
   }
 
   /** Match is over: tear down the simulation and return everyone to the lobby, unready. */
@@ -251,7 +294,11 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.sim?.dispose();
     this.sim = null;
     this.rounds = null;
+    this.power = null;
     this.state.sim.clear();
+    this.state.power.clear();
+    this.state.doors.clear();
+    this.state.weather = 'clear';
     for (const p of this.state.players.values()) p.ready = false;
     this.state.phase = 'lobby';
     this.state.countdown = 0;

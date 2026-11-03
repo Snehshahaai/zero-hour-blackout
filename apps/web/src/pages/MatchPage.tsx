@@ -123,8 +123,8 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
               <kbd>Space</kbd> jump
             </li>
             <li>
-              <kbd>Mouse 1</kbd> fire · <kbd>R</kbd> reload · <kbd>E</kbd> hold to plant / defuse ·{' '}
-              <kbd>Tab</kbd> scores
+              <kbd>Mouse 1</kbd> fire · <kbd>R</kbd> reload · <kbd>E</kbd> hold to plant / defuse /
+              cut power · <kbd>Tab</kbd> scores
             </li>
           </ul>
           <button
@@ -243,9 +243,16 @@ function RoundBar({ hud }: { hud: MatchHud }) {
         {PHASE_LABEL[round.phase]}
         {bomb.planted && ` · SITE ${bomb.site}`}
       </div>
+      {hud.power && (
+        <div className="roundbar-power" role="status">
+          POWER CUT · {hud.power.label.toUpperCase()} · {Math.ceil(hud.power.secondsLeft)}s
+          <small>Emergency lighting · backup power restoring</small>
+        </div>
+      )}
       <div className="roundbar-meta">
         ROUND {round.number} · YOU ARE {mySide.toUpperCase()} ·{' '}
         {mySide === 'attackers' ? 'PLANT THE BOMB' : 'STOP THE PLANT'}
+        {hud.weather !== 'clear' && ` · ${hud.weather.toUpperCase()}`}
       </div>
     </div>
   );

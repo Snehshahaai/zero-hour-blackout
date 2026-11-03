@@ -7,7 +7,7 @@ import { createGameServer } from '../server.ts';
 const PORT = 24000 + Math.floor(Math.random() * 4000);
 const server = createGameServer(
   { CLIENT_ORIGINS: ['http://localhost:5173'] },
-  { roundRules: { freezeSeconds: 0.3, roundSeconds: 60, matchEndSeconds: 0.5 } },
+  { roundRules: { freezeSeconds: 0.3, roundSeconds: 60, matchEndSeconds: 0.5 }, weather: 'rain' },
 );
 const url = `ws://localhost:${PORT}`;
 const open: Room[] = [];
@@ -243,6 +243,11 @@ describe('MatchRoom (end-to-end)', () => {
     await until(() => mine().ackSeq >= 25, 'inputs acknowledged');
     expect(mine().x).toBeGreaterThan(startX + 0.8);
     expect(host.state.tick).toBeGreaterThan(t0);
+    // Environment state replicates: server-chosen weather, power zones and door states.
+    expect(host.state.weather).toBe('rain');
+    expect([...host.state.power.keys()].sort()).toEqual(['maintenance', 'security', 'warehouse']);
+    expect(host.state.power.get('warehouse').cut).toBe(false);
+    expect(host.state.doors.get('D-security-south').closed).toBe(false);
     // The other player is replicated too, with their own health/ammo.
     expect(host.state.sim.get(guest.sessionId).health).toBe(100);
   }, 20000);
@@ -296,4 +301,14 @@ describe('MatchRoom (end-to-end)', () => {
     await until(() => players(host).length === 2, 'rejoined lobby');
     expect(again.state.phase).toBe('lobby');
   }, 20000);
+
+  it('state JSON omits empty maps in the lobby (clients must default them)', async () => {
+    const host = await create('Host', { format: '1v1' });
+    await until(() => host.state.roomCode === host.roomId, 'state');
+    const raw = host.state.toJSON() as Record<string, unknown>;
+    // The web bridge defaults these; if Colyseus ever starts sending them, the defaults stay harmless.
+    expect(raw.sim === undefined || Object.keys(raw.sim as object).length === 0).toBe(true);
+    expect(raw.power === undefined || Object.keys(raw.power as object).length === 0).toBe(true);
+    expect(raw.doors === undefined || Object.keys(raw.doors as object).length === 0).toBe(true);
+  });
 });

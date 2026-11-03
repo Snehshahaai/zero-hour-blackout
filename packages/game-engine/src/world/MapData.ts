@@ -25,6 +25,8 @@ export interface CrateDef {
 }
 
 export interface LightDef {
+  /** Zone whose power controls this light. */
+  zone: string;
   pos: Vec3;
   color: number;
   intensity: number;
@@ -37,6 +39,32 @@ export interface ObjectiveDef {
   radius: number;
 }
 
+export interface ZoneDef {
+  id: string;
+  label: string;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  indoor: boolean;
+  surface: 'concrete' | 'metal' | 'asphalt';
+}
+
+export interface PowerPanelDef {
+  id: string;
+  /** Zone this panel cuts. */
+  zone: string;
+  pos: readonly [number, number];
+}
+
+/** Electronic door: open while powered, fails closed during an outage of its zone. */
+export interface DoorDef {
+  id: string;
+  zone: string;
+  /** Collision/visual box (minimum corner + size), same convention as `BoxDef`. */
+  box: BoxDef;
+}
+
 export interface MapDef {
   name: string;
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -44,6 +72,9 @@ export interface MapDef {
   cylinders: CylinderDef[];
   crates: CrateDef[];
   lights: LightDef[];
+  zones: ZoneDef[];
+  panels: PowerPanelDef[];
+  doors: DoorDef[];
   objectives: ObjectiveDef[];
   /** Spawn points as [x, z]. */
   spawns: { attackers: (readonly [number, number])[]; defenders: (readonly [number, number])[] };

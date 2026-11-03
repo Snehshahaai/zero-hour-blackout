@@ -15,3 +15,4 @@ export * from './audio/index.ts';
 export * from './rendering/ViewModel.ts';
 export * from './rendering/Effects.ts';
 export * from './MatchGame.ts';
+export * from './rendering/Weather.ts';

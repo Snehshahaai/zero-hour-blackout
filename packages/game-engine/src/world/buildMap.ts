@@ -29,6 +29,10 @@ export interface BuiltMap {
   objectiveMarkers: Mesh[];
   setAnisotropy(n: number): void;
   setPointLightCount(n: number): void;
+  /** Cut/restore a zone's lights (cut = dim red emergency lighting). */
+  setZoneCut(zone: string, cut: boolean): void;
+  /** Show/hide a door shutter mesh. */
+  setDoorClosed(id: string, closed: boolean): void;
   setShadows(enabled: boolean): void;
   dispose(): void;
 }
@@ -157,12 +161,40 @@ export async function buildMap(
 
   onProgress(0.8, 'Lighting');
   await nextFrame();
+  const lightInfo = new Map<PointLight, { zone: string; color: Color; intensity: number }>();
   const pointLights = def.lights.map((l) => {
     const p = new PointLight(new Color(l.color), l.intensity, l.distance, 2);
     p.position.set(...l.pos);
     root.add(p);
+    lightInfo.set(p, { zone: l.zone, color: new Color(l.color), intensity: l.intensity });
     return p;
   });
+  const emergency = new Color(0xff2a18);
+  const setZoneCut = (zone: string, cut: boolean) => {
+    for (const [light, info] of lightInfo) {
+      if (info.zone !== zone) continue;
+      light.color.copy(cut ? emergency : info.color);
+      light.intensity = cut ? info.intensity * 0.18 : info.intensity;
+    }
+  };
+
+  const doorMeshes = new Map<string, Mesh>();
+  for (const d of def.doors) {
+    const [w, h, dd] = d.box.size;
+    const m = new Mesh(
+      geom(`door${d.id}`, () => boxGeometry(w, h, dd)),
+      materials[d.box.mat],
+    );
+    m.position.set(d.box.pos[0] + w / 2, d.box.pos[1] + h / 2, d.box.pos[2] + dd / 2);
+    m.castShadow = m.receiveShadow = true;
+    m.visible = false; // doors start open
+    root.add(m);
+    doorMeshes.set(d.id, m);
+  }
+  const setDoorClosed = (id: string, closed: boolean) => {
+    const m = doorMeshes.get(id);
+    if (m) m.visible = closed;
+  };
   const setPointLightCount = (n: number) => pointLights.forEach((p, i) => (p.visible = i < n));
   setPointLightCount(quality.maxPointLights);
 
@@ -196,6 +228,8 @@ export async function buildMap(
     objectiveMarkers,
     setAnisotropy,
     setPointLightCount,
+    setZoneCut,
+    setDoorClosed,
     setShadows,
     dispose() {
       for (const g of geoms.values()) g.dispose();

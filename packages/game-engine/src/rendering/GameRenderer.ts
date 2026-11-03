@@ -23,6 +23,8 @@ export class GameRenderer {
   readonly viewScene = new Scene();
   readonly viewCamera = new PerspectiveCamera(58, 1, 0.01, 10);
   viewModelVisible = false;
+  private readonly ambient = new HemisphereLight(0x8aa0c0, 0x30302c, 1.1);
+  private static readonly AMBIENT_BASE = 1.1;
   readonly renderer: WebGLRenderer;
   readonly sun: DirectionalLight;
   private settings: QualitySettings;
@@ -47,7 +49,7 @@ export class GameRenderer {
     this.scene.background = new Color(0x080a0d);
     this.scene.fog = new FogExp2(0x080a0d, 0.012);
 
-    this.scene.add(new HemisphereLight(0x8aa0c0, 0x30302c, 1.1));
+    this.scene.add(this.ambient);
     this.viewScene.add(new HemisphereLight(0xa8b8d0, 0x302c28, 1.6));
     const keyLight = new DirectionalLight(0xffffff, 1.8);
     keyLight.position.set(0.4, 1, 0.6);
@@ -71,6 +73,11 @@ export class GameRenderer {
     this.observer.observe(canvas);
     this.setQuality(quality);
     this.resize();
+  }
+
+  /** 1 = normal; lower in a blacked-out zone. Applied per frame by the match client. */
+  setAmbientScale(k: number): void {
+    this.ambient.intensity = GameRenderer.AMBIENT_BASE * k;
   }
 
   get quality(): QualitySettings {

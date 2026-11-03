@@ -225,3 +225,16 @@ describe('MatchSim combat', () => {
     expect(d.health.current).toBe(100);
   });
 });
+
+describe('MatchSim stale input', () => {
+  it('a held interact key expires when the client goes silent', () => {
+    const { sim, a } = setup();
+    sim.queueInput('A', input({ interact: true }));
+    sim.step();
+    expect(a.interact).toBe(true);
+    idle(sim, 6); // short gap (jitter): still held
+    expect(a.interact).toBe(true);
+    idle(sim, 10); // > 200 ms of silence
+    expect(a.interact).toBe(false);
+  });
+});

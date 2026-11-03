@@ -64,3 +64,11 @@
 - Round timing is server configuration (`MatchRoom.roundRules`, set by `createGameServer`), never taken from client options, so clients cannot shorten rounds.
 - The client does not predict during freeze/round-end/death: it sends no inputs, the server doesn't simulate those players, so nothing diverges. It hard-resets prediction whenever the round number changes (survivors are teleported to spawns).
 - Plant/defuse is deliberately a _hold_ interaction that doesn't lock movement, which avoids needing client-side prediction of an "interacting" state; revisit if it feels wrong in playtests.
+
+## Environment & audio notes (Phase 7)
+
+- Zones (`MapDef.zones`) are the single source for lighting groups, surfaces, indoor/outdoor and which areas can lose power; helpers live in `world/zones.ts` and are shared with the server through `@zhb/game-engine/sim`.
+- Power/doors/weather are server state replicated through the schema; the client only mirrors them (light colour/intensity, door mesh + collider, fog/rain). Darkness is applied per _local player_ by scaling the global ambient light when they stand in a cut zone, because lights are shared across the scene.
+- Bug class to remember: Colyseus `toJSON()` omits empty maps, so any new replicated map is `undefined` on the client until populated. The web bridge defaults them; the first browser run caught this, unit tests did not.
+- A client that stops sending inputs must not keep holding keys: `MatchSim` expires `interact` after 12 ticks without input.
+- Test hygiene: `pkill -f` matches the calling shell if the command text contains the pattern, and `npx` leaves a child process behind; kill test servers in their own call and verify the port is free, otherwise a stale server from an earlier phase answers.

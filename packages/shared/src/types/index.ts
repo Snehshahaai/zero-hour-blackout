@@ -6,3 +6,5 @@ export type RoomVisibility = 'public' | 'private';
 export type LobbyPhase = 'lobby' | 'starting' | 'inMatch';
 export type RoundPhase = 'freeze' | 'live' | 'planted' | 'roundEnd' | 'matchEnd';
 export type BombState = 'none' | 'planted';
+export type Weather = 'clear' | 'fog' | 'rain';
+export type Surface = 'concrete' | 'metal' | 'asphalt';

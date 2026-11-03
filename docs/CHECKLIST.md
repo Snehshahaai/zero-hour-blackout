@@ -80,8 +80,21 @@
 - [ ] Not verified in a real browser: an actual plant/defuse by walking to a site (covered by rule tests only), the 100 s default timings, 2v2 matches
 - Known: players stand still in round-end (client sends no input; server sees an empty queue). Map spawn/site balance is untested.
 
+## Phase 7: Signature mechanics — DONE (first version)
+
+- [x] **Power grid** (server-authoritative, `PowerGrid`): 3 panels (warehouse, security office, maintenance) cut a zone's power; hold E 1.5 s. Fairness rules: only these zones (never a bomb site), one outage at a time, auto backup restore after 20 s, 30 s cooldown, resets every round, announced to everyone (feed + sound + HUD banner with countdown), emergency red lighting (ambient floor 30%, never black)
+- [x] **Electronic door**: security-office south shutter fails closed during that zone's outage; it never closes while anyone is near it, and the office has two other exits. Collision is replicated and applied in both server and client physics
+- [x] **Spatial audio**: HRTF/equal-power panning (Low uses equal-power), distance attenuation, wall occlusion (low-pass + gain via a raycast), indoor/outdoor reverb, ambience beds (room hum / wind / rain), listener follows the camera
+- [x] **Footsteps**: per-surface sounds (concrete / metal / asphalt) from zone data; stride-based; crouch-walking is silent; remote steps are positional, occluded, range-limited (26 m) and position-jittered so sound never gives an exact location
+- [x] **Weather** (server-chosen per match, replicated, cosmetic only): clear / fog / rain; fog = pale haze with density cap, rain = pooled streaks around the camera (700 / 1600 by quality, none on Low) shown only outdoors, rain ambience
+- [x] 104 tests: map zone/panel/door validity (panels never overlap a plant zone), 8 power-grid tests (hold, reach, one-at-a-time, restore, cooldown, reset, door blocks movement / waits for clearance / reopens), stale-input expiry, audio helper tests, replicated environment state over a real server
+- [x] Browser-verified: 2-player match with forced rain (HUD shows RAIN, 0 prediction corrections, no page errors); rendered checks of rain, fog, blackout lighting and the closed shutter
+- [ ] Not done: a separate secondary objective (e.g. intel/escort) — the power grid is the only secondary mechanic; destructible objects; weather-dependent audio occlusion; per-zone darkness seen from outside (darkness applies to the player standing inside the cut zone; lights in the zone do dim for everyone); gameplay effect of weather (intentionally none)
+- [ ] Not verified: audio _quality/mix_ (headless browsers can't be listened to — only that the paths run without errors), a real player cutting power by walking to a panel in a browser (covered by server tests), HRTF cost on low-end CPUs
+- Known: sounds are synthesised placeholders; mix levels are first-pass and need ears. A held interact key now expires after 200 ms without input (found while testing: an idle client otherwise kept "holding" E forever).
+
 ## Not implemented yet
 
-Everything else: power grid/audio (P7), co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
+Everything else: co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
 
-## Next: Phase 7 — Signature mechanics (power grid, advanced sound, environment)
+## Next: Phase 8 — Cooperative mode (AI opponents, mission)

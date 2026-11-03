@@ -16,6 +16,8 @@ import type {
   NetHit,
   NetKill,
   NetPlayer,
+  NetPowerEvent,
+  NetPowerState,
   NetRoundEvent,
   NetShot,
   RoundInfo,
@@ -159,11 +161,18 @@ class Network {
         bombState: RoundInfo['bombState'];
         bombSite: string;
         matchWinner: RoundInfo['matchWinner'];
+        power: Record<string, NetPowerState>;
+        doors: Record<string, { closed: boolean }>;
+        weather: MatchSnapshot['weather'];
       };
       return {
         tick: raw.tick,
         timeMs: raw.timeMs,
-        players: raw.sim,
+        // toJSON() omits empty maps, so these are undefined until the server has filled them.
+        players: raw.sim ?? {},
+        power: raw.power ?? {},
+        doors: raw.doors ?? {},
+        weather: raw.weather ?? 'clear',
         round: {
           phase: raw.roundPhase,
           number: raw.roundNumber,
@@ -198,6 +207,7 @@ class Network {
       onKill: (cb) => sub<NetKill>('kill', cb),
       onRound: (cb) => sub<NetRoundEvent>('round', cb),
       onBomb: (cb) => sub<NetBombEvent>('bomb', cb),
+      onPower: (cb) => sub<NetPowerEvent>('power', cb),
     };
   }
 

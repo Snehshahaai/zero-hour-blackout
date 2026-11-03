@@ -44,3 +44,18 @@ export const ROUND_RULES = {
   defuseRange: 2.5,
 } as const;
 export type RoundRules = { -readonly [K in keyof typeof ROUND_RULES]: number };
+
+/** Power-grid rules. Deliberately conservative so blackouts stay fair in competitive play. */
+export const POWER_RULES = {
+  /** Seconds a player must hold E at a panel. */
+  panelHoldSeconds: 1.5,
+  /** Backup power restores the zone automatically after this long. */
+  outageSeconds: 20,
+  /** After an outage ends, panels cannot be used again for this long. */
+  cooldownSeconds: 30,
+  /** Metres from a panel within which it can be used. */
+  panelReach: 1.6,
+  /** A door only closes when nobody is within this distance of it (nobody gets trapped/crushed). */
+  doorClearance: 1.2,
+} as const;
+export type PowerRules = { -readonly [K in keyof typeof POWER_RULES]: number };

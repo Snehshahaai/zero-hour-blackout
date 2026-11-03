@@ -8,17 +8,27 @@ export interface QualitySettings {
   anisotropy: number;
   /** How many of the map's interior point lights are enabled. */
   maxPointLights: number;
+  /** Rain streaks drawn around the camera (0 = none). */
+  rainDrops: number;
   /** Only applied when the renderer is created (needs a new context to change). */
   antialias: boolean;
 }
 
 export const QUALITY_PRESETS: Record<GraphicsQuality, QualitySettings> = {
-  low: { maxPixelRatio: 1, shadowMapSize: 0, anisotropy: 1, maxPointLights: 2, antialias: false },
+  low: {
+    maxPixelRatio: 1,
+    shadowMapSize: 0,
+    anisotropy: 1,
+    maxPointLights: 2,
+    rainDrops: 0,
+    antialias: false,
+  },
   medium: {
     maxPixelRatio: 1.5,
     shadowMapSize: 1024,
     anisotropy: 4,
     maxPointLights: 4,
+    rainDrops: 700,
     antialias: true,
   },
   high: {
@@ -26,6 +36,7 @@ export const QUALITY_PRESETS: Record<GraphicsQuality, QualitySettings> = {
     shadowMapSize: 2048,
     anisotropy: 8,
     maxPointLights: 8,
+    rainDrops: 1600,
     antialias: true,
   },
 };

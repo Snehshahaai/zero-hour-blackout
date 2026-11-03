@@ -45,6 +45,16 @@ export const SimPlayerSchema = schema(
 );
 export type SimPlayerSchema = SchemaType<typeof SimPlayerSchema>;
 
+export const ZonePowerSchema = schema(
+  {
+    cut: t.boolean().default(false),
+    secondsLeft: t.float32().default(0),
+    cooldownLeft: t.float32().default(0),
+  },
+  'ZonePower',
+);
+export const DoorSchema = schema({ closed: t.boolean().default(false) }, 'Door');
+
 export const LobbyState = schema(
   {
     roomCode: t.string().default(''),
@@ -72,6 +82,10 @@ export const LobbyState = schema(
     tick: t.uint32().default(0),
     timeMs: t.float64().default(0),
     sim: t.map(SimPlayerSchema),
+    /** Per-zone power for the zones that have a panel. */
+    power: t.map(ZonePowerSchema),
+    doors: t.map(DoorSchema),
+    weather: t.string().default('clear'),
   },
   'LobbyState',
 );

@@ -12,6 +12,8 @@ export const FIXED_DT = 1 / 60;
 /** Static collision world built from a `MapDef`, plus a shared home for dynamic characters. */
 export class PhysicsWorld {
   readonly world: RAPIER.World;
+  /** Electronic doors by id; enabled colliders block movement and shots. */
+  private readonly doors = new Map<string, RAPIER.Collider>();
 
   private constructor(world: RAPIER.World) {
     this.world = world;
@@ -49,8 +51,29 @@ export class PhysicsWorld {
           .setRotation({ x: 0, y: half, z: 0, w: Math.cos(c.rotY / 2) }),
       );
     }
+    const pw = new PhysicsWorld(world);
+    for (const d of map.doors) {
+      const [w, h, dd] = d.box.size;
+      const collider = world.createCollider(
+        RAPIER.ColliderDesc.cuboid(w / 2, h / 2, dd / 2).setTranslation(
+          d.box.pos[0] + w / 2,
+          d.box.pos[1] + h / 2,
+          d.box.pos[2] + dd / 2,
+        ),
+      );
+      collider.setEnabled(false); // doors start open
+      pw.doors.set(d.id, collider);
+    }
     world.step(); // builds the query pipeline so character queries see the static geometry
-    return new PhysicsWorld(world);
+    return pw;
+  }
+
+  /** Closing a door makes it solid; call from both the server and the predicting client. */
+  setDoorClosed(id: string, closed: boolean): void {
+    const c = this.doors.get(id);
+    if (!c || c.isEnabled() === closed) return;
+    c.setEnabled(closed);
+    this.refreshQueries();
   }
 
   /**
