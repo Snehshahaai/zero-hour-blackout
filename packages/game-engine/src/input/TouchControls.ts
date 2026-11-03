@@ -47,6 +47,11 @@ export class TouchControls {
     this.root.addEventListener('contextmenu', block);
     this.cleanup.push(() => this.root.removeEventListener('contextmenu', block));
 
+    // Same swipe, same feel on any screen: tablets need a longer drag for the same turn, so their
+    // gain grows with the short side of the screen (phones ~1x, 10-inch tablets ~1.6x).
+    const shortSide = Math.min(window.innerWidth, window.innerHeight);
+    this.state.lookGain *= Math.min(1.6, Math.max(1, shortSide / 430));
+
     this.buildLookZone();
     this.buildStick();
     this.buildButtons();
@@ -98,9 +103,17 @@ export class TouchControls {
     };
     const move = (e: PointerEvent) => {
       if (e.pointerId !== id) return;
-      this.state.addLook(e.clientX - lx, e.clientY - ly);
-      lx = e.clientX;
-      ly = e.clientY;
+      // High-rate samples: the browser batches touch moves per frame; the batch has the real path.
+      const samples = e.getCoalescedEvents?.() ?? [];
+      for (const s of samples.length > 0 ? samples : [e]) {
+        const dx = s.clientX - lx;
+        const dy = s.clientY - ly;
+        lx = s.clientX;
+        ly = s.clientY;
+        // Slow drags stay precise, fast flicks turn further: a mild speed boost.
+        const boost = 1 + Math.min(0.6, Math.hypot(dx, dy) / 40);
+        this.state.addLook(dx * boost, dy * boost);
+      }
       e.preventDefault();
     };
     const up = (e: PointerEvent) => {

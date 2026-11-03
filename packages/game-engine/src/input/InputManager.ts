@@ -74,8 +74,8 @@ export class InputManager {
   }
 
   /** Returns accumulated mouse movement since the last call. */
-  consumeMouse(): { dx: number; dy: number } {
-    const t = this.touch?.state.consumeLook() ?? { dx: 0, dy: 0 };
+  consumeMouse(dt?: number): { dx: number; dy: number } {
+    const t = this.touch?.state.consumeLook(dt) ?? { dx: 0, dy: 0 };
     const r = { dx: this.mouseDx + t.dx, dy: this.mouseDy + t.dy };
     this.mouseDx = this.mouseDy = 0;
     return r;

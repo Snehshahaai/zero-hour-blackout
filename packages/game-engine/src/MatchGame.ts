@@ -935,7 +935,7 @@ export async function createMatchGame(
         curr.eye = s.eyeHeight;
       },
       render: (alpha, frameDt) => {
-        const m = input.consumeMouse();
+        const m = input.consumeMouse(frameDt);
         if (hud.alive) fpCamera.look(m.dx, m.dy, SENSITIVITY);
         lookDx = m.dx;
         lookDy = m.dy;

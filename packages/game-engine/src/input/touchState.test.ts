@@ -92,4 +92,16 @@ describe('TouchState', () => {
     expect(t.consumeJump()).toBe(false);
     expect(t.consumeLook()).toEqual({ dx: 0, dy: 0 });
   });
+
+  it('eases pending look movement over frames without losing any of it', () => {
+    const t = new TouchState();
+    t.addLook(100, 0);
+    let total = 0;
+    const first = t.consumeLook(1 / 60).dx;
+    total += first;
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThan(100 * t.lookGain); // not all at once
+    for (let i = 0; i < 60; i++) total += t.consumeLook(1 / 60).dx;
+    expect(total).toBeCloseTo(100 * t.lookGain, 0);
+  });
 });

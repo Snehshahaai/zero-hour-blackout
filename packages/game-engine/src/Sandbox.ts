@@ -305,7 +305,7 @@ export async function createSandbox(
         syncHud();
       },
       render: (alpha, frameDt) => {
-        const m = input.consumeMouse();
+        const m = input.consumeMouse(frameDt);
         fpCamera.look(m.dx, m.dy, SENSITIVITY);
         lookDx = m.dx;
         lookDy = m.dy;

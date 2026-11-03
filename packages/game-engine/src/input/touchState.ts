@@ -43,7 +43,9 @@ export class TouchState {
   private fireLatch = false;
   private reload = false;
   /** Pixels of finger travel -> mouse-equivalent pixels (touch needs more gain than a mouse). */
-  lookGain = 1.9;
+  lookGain = 3;
+  /** Glide time constant (s): pending swipe movement is eased out over roughly this long. */
+  lookSmoothing = 0.04;
 
   setStick(v: StickValue): void {
     this.moveX = v.x;
@@ -56,9 +58,20 @@ export class TouchState {
     this.lookY += dyPx * this.lookGain;
   }
 
-  consumeLook(): { dx: number; dy: number } {
-    const r = { dx: this.lookX, dy: this.lookY };
-    this.lookX = this.lookY = 0;
+  /**
+   * Movement since the last call. With `dt` the swipe is eased: each frame releases a share of what
+   * is pending, so touch samples that arrive in bursts become a steady glide instead of steps.
+   */
+  consumeLook(dt?: number): { dx: number; dy: number } {
+    if (dt === undefined || this.lookSmoothing <= 0) {
+      const r = { dx: this.lookX, dy: this.lookY };
+      this.lookX = this.lookY = 0;
+      return r;
+    }
+    const k = 1 - Math.exp(-dt / this.lookSmoothing);
+    const r = { dx: this.lookX * k, dy: this.lookY * k };
+    this.lookX -= r.dx;
+    this.lookY -= r.dy;
     return r;
   }
 
