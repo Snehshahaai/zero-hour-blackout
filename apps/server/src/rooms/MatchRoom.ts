@@ -107,7 +107,9 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     }
     const parsed = createRoomOptionsSchema.safeParse(options);
     if (!parsed.success) throw new ServerError(400, 'Invalid room options');
-    const { format, mode, fillBots, botDifficulty } = parsed.data;
+    const { mode, fillBots, botDifficulty } = parsed.data;
+    // Playing against AI is always a 1v1 deathmatch to 40 kills, whatever format was asked for.
+    const format = fillBots && mode === 'competitive' ? '1v1' : parsed.data.format;
     // Rooms with bots are always private: they are practice rooms, never matched into public play.
     const visibility = fillBots && mode === 'competitive' ? 'private' : parsed.data.visibility;
 

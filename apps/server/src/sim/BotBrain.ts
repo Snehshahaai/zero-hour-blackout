@@ -90,6 +90,8 @@ export class BotBrain {
   private goal: BotGoal | null = null;
   private goalKey = '';
   private interactNow = false;
+  /** Deathmatch: where the enemy is right now (not part of the goal, so it never forces a re-plan). */
+  chase: { x: number; z: number } | null = null;
 
   constructor(
     readonly config: BotConfig,
@@ -295,6 +297,12 @@ export class BotBrain {
 
   private navigate(me: SimPlayer): { x: number; z: number; sprint: boolean } {
     const s = me.controller.state;
+    if (this.chase && this.state === 'search') {
+      // Deathmatch hunters know where the enemy is: no wandering off to investigate noises.
+      this.state = 'move';
+      this.memory = null;
+      this.path = [];
+    }
     if (this.state === 'search' && this.memory && this.path.length === 0) {
       const goal = this.nav.nearest(this.memory.x, this.memory.z);
       const start = this.nav.nearest(s.x, s.z);
@@ -337,7 +345,13 @@ export class BotBrain {
     }
 
     const next = this.path[0];
-    if (!next) return { x: 0, z: 0, sprint: false };
+    if (!next) {
+      // Hunting with no usable graph route (or already at the last node): close in directly.
+      const c = this.chase;
+      if (c && Math.hypot(c.x - s.x, c.z - s.z) > 3)
+        return { x: c.x - s.x, z: c.z - s.z, sprint: Math.hypot(c.x - s.x, c.z - s.z) > 15 };
+      return { x: 0, z: 0, sprint: false };
+    }
     const dx = next.x - s.x;
     const dz = next.z - s.z;
     if (Math.hypot(dx, dz) < ARRIVE) {

@@ -421,44 +421,40 @@ describe('MatchRoom (end-to-end)', () => {
     expect(Math.hypot((b1?.x ?? 0) - x0, (b1?.z ?? 0) - z0)).toBeGreaterThan(2); // it patrols/guards, not frozen
   }, 20000);
 
-  it('practice vs bot with a friend: bots only fill the slots humans left empty (2v2)', async () => {
-    const host = await create('Host', { format: '2v2', fillBots: true });
-    const friend = await joinCode(host.roomId, 'Friend');
-    await until(() => players(host).length === 2, 'two humans');
-    friend.send('setReady', { ready: true });
-    await until(() => playerOf(host, friend.sessionId).ready, 'friend ready');
+  it('practice vs bot is always a 1v1 deathmatch to 40 kills, even if another format is asked for', async () => {
+    const host = await create('Solo', { format: '2v2', fillBots: true });
+    await until(() => host.state.roomCode === host.roomId, 'state');
+    expect(host.state.format).toBe('1v1');
     host.send('start', {});
     await until(
-      () => host.state.phase === 'inMatch' && host.state.sim.size === 4,
-      '2 humans + 2 bots',
+      () => host.state.phase === 'inMatch' && host.state.sim.size === 2,
+      'human + one bot',
       7000,
     );
+    expect(host.state.deathmatchKills).toBe(40);
     const all = Object.values(host.state.sim.toJSON() as Record<string, { isBot: boolean }>);
-    expect(all.filter((p) => p.isBot)).toHaveLength(2);
+    expect(all.filter((p) => p.isBot)).toHaveLength(1);
   }, 20000);
 
-  it('practice vs bot: with the human on defence, the bot attacker walks to a site and plants through the live room', async () => {
-    const host = await create('Defender', { format: '1v1', fillBots: true });
+  it('practice vs bot: the bot scores kills on an idle human, who keeps respawning', async () => {
+    const host = await create('Idle', { format: '1v1', fillBots: true });
     await until(() => host.state.roomCode === host.roomId, 'state');
-    host.send('setTeam', { team: 'defenders' }); // human defends, so the bot is the attacker
-    await until(() => playerOf(host, host.sessionId).team === 'defenders', 'switched to defenders');
     host.send('start', {});
     await until(() => host.state.phase === 'inMatch', 'inMatch', 7000);
     await until(() => host.state.sim.size === 2, 'human + bot');
-    const bot = () =>
-      Object.values(
-        host.state.sim.toJSON() as Record<string, { isBot: boolean; side: string }>,
-      ).find((p) => p.isBot);
-    expect(bot()?.side).toBe('attackers');
-
-    // Keep the human out of the way (idle at the defender spawn) and wait for the bot to do its job.
-    let sawPlant = false;
     const t0 = Date.now();
-    while (Date.now() - t0 < 50000 && !sawPlant && host.state.scoreAttackers === 0) {
-      if (host.state.bombState === 'planted') sawPlant = true;
-      await new Promise((r) => setTimeout(r, 100));
+    const kills = () => host.state.scoreAttackers + host.state.scoreDefenders;
+    const me = () =>
+      (host.state.sim.toJSON() as Record<string, { alive: boolean }>)[host.sessionId];
+    let died = false;
+    let back = false;
+    while (Date.now() - t0 < 70000 && !back) {
+      if (me()?.alive === false) died = true;
+      else if (died && me()?.alive) back = true;
+      await new Promise((r) => setTimeout(r, 50));
     }
-    // Either it planted (bomb state seen) or it already won the round by eliminating the idle human.
-    expect(sawPlant || host.state.scoreAttackers >= 1).toBe(true);
-  }, 70000);
+    expect(kills()).toBeGreaterThanOrEqual(1);
+    expect(back).toBe(true); // killed, then respawned
+    expect(host.state.roundPhase).toBe('live'); // no round end in deathmatch
+  }, 90000);
 });

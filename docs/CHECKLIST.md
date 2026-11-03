@@ -167,7 +167,7 @@ Bugs found and fixed while building this:
 - [x] Server sim follows the wall clock (catch-up up to 12 ticks) so round timers keep counting on a starved host
 - [x] Queue overflow keeps fire/jump/reload edges; fire taps shorter than one tick/frame are latched (desktop + touch)
 - [x] Positional-audio voice cap (10); client auto-lowers graphics quality when FPS stays < 28
-- [x] 1v1 = deathmatch to 40 kills, unlimited respawns (3 s); 2v2 = no respawns (down until next round)
+- [x] 1v1 = deathmatch to 40 kills, unlimited respawns (3 s). "Practice vs Bot" is 1 vs AI deathmatch only; 2v2 = no respawns (down until next round)
 - [x] Co-op: shared pool of 3 respawns, refilled at every objective
 - [x] Dead players spectate a living teammate; Fire (click / tap) cycles; HUD shows respawn timer and pips
 - [ ] Spectator camera and touch cycling not yet verified on real devices; Render Free CPU headroom still unmeasured

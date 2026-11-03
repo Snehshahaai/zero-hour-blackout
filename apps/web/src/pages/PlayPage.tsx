@@ -86,7 +86,7 @@ export function PlayPage() {
         <button
           className="action action-live"
           disabled={!nameCheck.success || busy}
-          onClick={() => run((n) => network.createRoom(n, format, 'private'))}
+          onClick={() => run((n) => network.createRoom(n, '1v1', 'private'))}
         >
           <span className="action-label">Create Private Room</span>
           <span className="action-hint">Get a code to share with friends</span>
@@ -119,10 +119,10 @@ export function PlayPage() {
         <p className="eyebrow" id="practice-title">
           PRACTICE VS BOT
         </p>
-        <h3>Full competitive match against AI</h3>
+        <h3>1 vs AI bot · deathmatch to 40 kills</h3>
         <p className="note">
-          Rounds, bomb plant and defuse, side swap and scoring, exactly like online play. Bots fill
-          every empty slot (a {format} here). Pick the Format above, then a difficulty.
+          No friends online? Play solo against an AI opponent. First to 40 kills wins the match, and
+          you respawn every time you go down. Pick a difficulty.
         </p>
         <div role="radiogroup" aria-label="Bot difficulty" className="segmented">
           {(['easy', 'normal', 'hard'] as const).map((d) => (
@@ -153,7 +153,7 @@ export function PlayPage() {
         >
           <span className="action-label">Start Practice Match</span>
           <span className="action-hint">
-            {format} vs bots · {difficulty} · first to 4 rounds, sides swap
+            1 vs AI · {difficulty} · first to 40 kills, instant respawns
           </span>
         </button>
       </section>
@@ -165,7 +165,8 @@ export function PlayPage() {
         <h3>Secure the Facility</h3>
         <p className="note">
           1–4 operators against server-controlled hostiles. Clear the patrols, then hold the
-          generator room and the loading dock. Fallen operators return at each objective.
+          generator room and the loading dock. Your team shares 3 respawns per objective; when you
+          go down you spectate a teammate.
         </p>
         <button
           className="action action-live"

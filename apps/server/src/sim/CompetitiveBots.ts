@@ -111,7 +111,26 @@ export class CompetitiveBots {
 
   private goalFor(bot: SimPlayer): BotGoal {
     if (this.rounds.deathmatch) {
-      // Deathmatch: roam the whole map, hunting. Bots walk opposite directions so they meet.
+      // Deathmatch: hunt the nearest living enemy (bots "know" the general area, like a spotter
+      // call-out); with nobody to chase, roam the whole map.
+      const me = bot.controller.state;
+      let best: SimPlayer | null = null;
+      let bestD = Infinity;
+      for (const p of this.sim.players.values()) {
+        if (!p.alive || p.team === bot.team) continue;
+        const d = Math.hypot(p.controller.state.x - me.x, p.controller.state.z - me.z);
+        if (d < bestD) {
+          bestD = d;
+          best = p;
+        }
+      }
+      const brain = this.brains.get(bot.id);
+      if (brain)
+        brain.chase = best ? { x: best.controller.state.x, z: best.controller.state.z } : null;
+      const target = best
+        ? this.nav.nearest(best.controller.state.x, best.controller.state.z)
+        : null;
+      if (target) return { kind: 'route', nodes: [target.id], sprint: bestD > 15 };
       const loop = [...GUARD_ROUTES.A, ...GUARD_ROUTES.B];
       return { kind: 'route', nodes: bot.team === 'attackers' ? loop : loop.reverse() };
     }
