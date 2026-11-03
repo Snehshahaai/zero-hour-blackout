@@ -117,6 +117,9 @@ class Network {
     for (const l of this.listeners) l();
   }
 
+  /** While in the future, a practice match is starting and the lobby screen is suppressed. */
+  practiceUntil = 0;
+
   async createRoom(
     playerName: string,
     format: MatchFormat,
@@ -124,6 +127,8 @@ class Network {
     mode: GameMode = 'competitive',
     bots?: { fillBots: true; botDifficulty: BotDifficulty },
   ): Promise<boolean> {
+    // Solo practice never shows a lobby: the UI keeps the loading screen up until the match starts.
+    this.practiceUntil = bots ? Date.now() + 12000 : 0;
     return this.connect(() =>
       this.client.create(MATCH_ROOM_NAME, { playerName, format, visibility, mode, ...bots }),
     );
@@ -157,6 +162,7 @@ class Network {
   async leave(): Promise<void> {
     const room = this.room;
     this.leaving = true;
+    this.practiceUntil = 0;
     writeSaved(null);
     this.room = null;
     this.set({ ...IDLE });

@@ -1,7 +1,7 @@
 import { network } from './services/network.ts';
 import { checkBrowserSupport } from '@zhb/game-engine/detect';
 import { TopBar } from './components/TopBar.tsx';
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { useHashRoute } from './hooks/useHashRoute.ts';
 import { useNetwork } from './hooks/useNetwork.ts';
 import { useServerStatus } from './hooks/useServerStatus.ts';
@@ -43,6 +43,15 @@ export function App() {
     void network.resume();
   }, []);
 
+  // Re-render when the practice start window closes, so a failed start falls back to the lobby.
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const left = network.practiceUntil - Date.now();
+    if (left <= 0) return;
+    const id = setTimeout(() => bump((n) => n + 1), left + 50);
+    return () => clearTimeout(id);
+  }, [net.lobby]);
+
   // Entering a lobby opens it; losing it (kick, disconnect for good) leaves the lobby screen.
   useEffect(() => {
     if (inLobby && route !== 'lobby' && route !== 'sandbox') navigate('lobby');
@@ -56,6 +65,14 @@ export function App() {
       </Suspense>
     );
   }
+  // Practice vs AI goes straight into the game: no lobby while the match spins up.
+  if (
+    route === 'lobby' &&
+    net.lobby &&
+    net.lobby.phase !== 'inMatch' &&
+    Date.now() < network.practiceUntil
+  )
+    return <GameLoading />;
   // Once the server starts the match, the lobby screen is replaced by the game itself.
   if (route === 'lobby' && net.lobby?.phase === 'inMatch') {
     return (
