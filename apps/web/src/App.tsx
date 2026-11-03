@@ -4,16 +4,18 @@ import { useServerStatus } from './hooks/useServerStatus.ts';
 import { SceneBackground } from './features/scene/SceneBackground.tsx';
 import { HomePage } from './pages/HomePage.tsx';
 import { ComingSoonPage } from './pages/PlaceholderPage.tsx';
+import { SandboxPage } from './pages/SandboxPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
 
 export function App() {
   const [route, navigate] = useHashRoute();
   const serverStatus = useServerStatus();
+  if (route === 'sandbox') return <SandboxPage onExit={() => navigate('home')} />;
   return (
     <div className={`app${route === 'home' ? '' : ' app-dim'}`}>
       <SceneBackground active={route === 'home'} />
       <TopBar route={route} onNavigate={navigate} serverStatus={serverStatus} />
-      {route === 'home' && <HomePage />}
+      {route === 'home' && <HomePage onNavigate={navigate} />}
       {route === 'play' && <ComingSoonPage title="Play" phase="Phase 5 · Multiplayer" />}
       {route === 'operations' && (
         <ComingSoonPage title="Operations" phase="Phase 8 · Cooperative" />

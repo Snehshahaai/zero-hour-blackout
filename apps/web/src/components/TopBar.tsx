@@ -1,9 +1,9 @@
 import { THREE_REVISION, isWebGL2Supported } from '@zhb/game-engine';
 import { GAME_NAME } from '@zhb/shared';
-import { ROUTES, type Route } from '../hooks/useHashRoute.ts';
+import { NAV_ROUTES, type NavRoute, type Route } from '../hooks/useHashRoute.ts';
 import type { ServerStatus } from '../services/serverStatus.ts';
 
-const LABELS: Record<Route, string> = {
+const LABELS: Record<NavRoute, string> = {
   home: 'Home',
   play: 'Play',
   operations: 'Operations',
@@ -28,7 +28,7 @@ export function TopBar({ route, onNavigate, serverStatus }: Props) {
         <span className="brand-sub">BLACKOUT</span>
       </div>
       <nav className="nav" aria-label="Main">
-        {ROUTES.map((r) => (
+        {NAV_ROUTES.map((r) => (
           <button
             key={r}
             className="nav-item"

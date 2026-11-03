@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export const ROUTES = ['home', 'play', 'operations', 'loadout', 'profile', 'settings'] as const;
+export const NAV_ROUTES = ['home', 'play', 'operations', 'loadout', 'profile', 'settings'] as const;
+export type NavRoute = (typeof NAV_ROUTES)[number];
+/** Routes reachable by hash. `sandbox` is full-screen and not in the main navigation. */
+export const ROUTES = [...NAV_ROUTES, 'sandbox'] as const;
 export type Route = (typeof ROUTES)[number];
 
 function parse(hash: string): Route {

@@ -147,14 +147,14 @@ function build(): MapDef {
     cylinders,
     crates,
     lights: [
-      { pos: [30, 7.5, 16], color: 0xffd9a0, intensity: 90, distance: 28 },
-      { pos: [30, 7.5, 25], color: 0xffd9a0, intensity: 90, distance: 28 },
-      { pos: [39, 4.5, 5], color: 0xff9a50, intensity: 40, distance: 14 },
-      { pos: [21, 4.5, 5], color: 0xcfe6ff, intensity: 35, distance: 12 },
-      { pos: [10, 4.5, 10], color: 0xffd9a0, intensity: 30, distance: 16 },
-      { pos: [10, 4.5, 30], color: 0xffd9a0, intensity: 30, distance: 16 },
-      { pos: [35, 4.5, 35], color: 0xffd9a0, intensity: 35, distance: 18 },
-      { pos: [52, 3.5, 20], color: 0xcfe6ff, intensity: 25, distance: 16 },
+      { pos: [30, 7.5, 16], color: 0xffd9a0, intensity: 360, distance: 28 },
+      { pos: [30, 7.5, 25], color: 0xffd9a0, intensity: 360, distance: 28 },
+      { pos: [39, 4.5, 5], color: 0xff9a50, intensity: 160, distance: 14 },
+      { pos: [21, 4.5, 5], color: 0xcfe6ff, intensity: 140, distance: 12 },
+      { pos: [10, 4.5, 10], color: 0xffd9a0, intensity: 120, distance: 16 },
+      { pos: [10, 4.5, 30], color: 0xffd9a0, intensity: 120, distance: 16 },
+      { pos: [35, 4.5, 35], color: 0xffd9a0, intensity: 140, distance: 18 },
+      { pos: [52, 3.5, 20], color: 0xcfe6ff, intensity: 100, distance: 16 },
     ],
     objectives: [
       { id: 'A', center: [39, 8.2], radius: 1.6 }, // generator room

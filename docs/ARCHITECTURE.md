@@ -22,3 +22,10 @@
 - Map geometry is data (`world/MapData.ts`) so the same definition can later feed Rapier colliders and server-side validation.
 - One canvas per renderer lifetime: `GameRenderer.dispose()` force-loses the WebGL context, so React must never reuse a canvas across mounts (StrictMode bug found and fixed in `SceneBackground`).
 - Interior lighting is a handful of non-shadowed point lights toggled by quality; the power-grid mechanic (Phase 7) will drive these.
+
+## Movement & physics notes (Phase 3)
+
+- Character movement is our own model (linear accel/decel, gravity, jump) with Rapier's `KinematicCharacterController` doing collision, autostep and ground detection. Rapier's dynamic solver is not used for the player, so movement is deterministic enough for client-side prediction later.
+- `MOVEMENT` constants live in `entities/movement.ts` so the server can run the identical step for reconciliation (Phase 5). The server will need `PhysicsWorld` + `PlayerController`; both are free of DOM/Three.js imports.
+- Game time slows rather than spiralling when the frame rate falls below ~12 fps (`GameLoop` caps catch-up at 5 steps).
+- Colliders include roofs and glass. Crouch resizes the capsule in place with feet fixed; standing requires a shape-intersection headroom test.

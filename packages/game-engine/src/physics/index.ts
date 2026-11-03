@@ -1,1 +1,1 @@
-export {};
+export * from './PhysicsWorld.ts';

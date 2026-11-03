@@ -79,7 +79,7 @@ export async function buildMap(
     concrete: new MeshStandardMaterial({ map: concrete, roughness: 0.92, metalness: 0 }),
     concreteDark: new MeshStandardMaterial({ map: concreteDark, roughness: 0.95, metalness: 0 }),
     asphalt: new MeshStandardMaterial({ map: asphalt, roughness: 1, metalness: 0 }),
-    metal: new MeshStandardMaterial({ map: metal, roughness: 0.45, metalness: 0.85 }),
+    metal: new MeshStandardMaterial({ map: metal, roughness: 0.5, metalness: 0.3 }),
     crate: new MeshStandardMaterial({ color: 0x4b5a3a, roughness: 0.7, metalness: 0.2 }),
     glass: new MeshStandardMaterial({
       color: 0x9fc4d4,

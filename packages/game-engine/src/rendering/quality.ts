@@ -13,7 +13,7 @@ export interface QualitySettings {
 }
 
 export const QUALITY_PRESETS: Record<GraphicsQuality, QualitySettings> = {
-  low: { maxPixelRatio: 1, shadowMapSize: 0, anisotropy: 1, maxPointLights: 0, antialias: false },
+  low: { maxPixelRatio: 1, shadowMapSize: 0, anisotropy: 1, maxPointLights: 2, antialias: false },
   medium: {
     maxPixelRatio: 1.5,
     shadowMapSize: 1024,

@@ -43,7 +43,7 @@ export class GameRenderer {
     this.scene.background = new Color(0x080a0d);
     this.scene.fog = new FogExp2(0x080a0d, 0.012);
 
-    this.scene.add(new HemisphereLight(0x8aa0c0, 0x201c18, 0.35));
+    this.scene.add(new HemisphereLight(0x8aa0c0, 0x30302c, 1.1));
 
     // Cold moonlight key light; its shadow frustum covers the whole (compact) map.
     this.sun = new DirectionalLight(0x9db4d8, 1.4);

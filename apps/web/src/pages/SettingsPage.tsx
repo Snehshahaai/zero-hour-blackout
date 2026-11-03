@@ -2,7 +2,7 @@ import type { GraphicsQuality } from '@zhb/shared';
 import { useGraphicsQuality } from '../hooks/useGraphicsQuality.ts';
 
 const OPTIONS: { value: GraphicsQuality; label: string; hint: string }[] = [
-  { value: 'low', label: 'Low', hint: 'No shadows, no dynamic interior lights, 1x resolution' },
+  { value: 'low', label: 'Low', hint: 'No shadows, 2 interior lights, 1x resolution' },
   {
     value: 'medium',
     label: 'Medium',

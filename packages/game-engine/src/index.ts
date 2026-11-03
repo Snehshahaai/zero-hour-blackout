@@ -5,3 +5,8 @@ export * from './rendering/GameRenderer.ts';
 export * from './world/MapData.ts';
 export * from './world/map01.ts';
 export * from './MapPreview.ts';
+export * from './physics/index.ts';
+export * from './entities/index.ts';
+export * from './input/index.ts';
+export * from './camera/index.ts';
+export * from './Sandbox.ts';

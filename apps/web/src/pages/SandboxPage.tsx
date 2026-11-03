@@ -1,0 +1,122 @@
+import { createSandbox, type Sandbox, type SandboxDebug } from '@zhb/game-engine';
+import { useEffect, useRef, useState } from 'react';
+import { useGraphicsQuality } from '../hooks/useGraphicsQuality.ts';
+
+type Phase =
+  | { kind: 'loading'; fraction: number; label: string }
+  | { kind: 'ready' }
+  | { kind: 'error'; message: string };
+
+export function SandboxPage({ onExit }: { onExit: () => void }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const sandboxRef = useRef<Sandbox | null>(null);
+  const [quality] = useGraphicsQuality();
+  const initialQuality = useRef(quality);
+  const [phase, setPhase] = useState<Phase>({ kind: 'loading', fraction: 0, label: 'Starting' });
+  const [locked, setLocked] = useState(false);
+  const [dbg, setDbg] = useState<SandboxDebug | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    // Fresh canvas per effect run (see SceneBackground for why).
+    const canvas = document.createElement('canvas');
+    canvas.className = 'game-canvas';
+    host.appendChild(canvas);
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    createSandbox(canvas, initialQuality.current, (fraction, label) => {
+      if (!cancelled) setPhase({ kind: 'loading', fraction, label });
+    })
+      .then((sb) => {
+        if (cancelled) return sb.dispose();
+        sandboxRef.current = sb;
+        unsubscribe = sb.onLockChange(setLocked);
+        setPhase({ kind: 'ready' });
+      })
+      .catch((e: unknown) => {
+        if (!cancelled)
+          setPhase({ kind: 'error', message: e instanceof Error ? e.message : 'Failed to start' });
+      });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+      sandboxRef.current?.dispose();
+      sandboxRef.current = null;
+      canvas.remove();
+    };
+  }, []);
+
+  useEffect(() => sandboxRef.current?.setQuality(quality), [quality, phase.kind]);
+
+  // Debug readout polled at 4 Hz: React never sits in the per-frame path.
+  useEffect(() => {
+    if (phase.kind !== 'ready') return;
+    const id = setInterval(() => setDbg(sandboxRef.current?.debug() ?? null), 250);
+    return () => clearInterval(id);
+  }, [phase.kind]);
+
+  return (
+    <div className="game">
+      <div ref={hostRef} className="game-host" />
+      {phase.kind === 'loading' && (
+        <div
+          className="loading"
+          role="progressbar"
+          aria-valuenow={Math.round(phase.fraction * 100)}
+        >
+          <span className="loading-label">{phase.label.toUpperCase()}</span>
+          <span className="loading-bar">
+            <span style={{ width: `${phase.fraction * 100}%` }} />
+          </span>
+        </div>
+      )}
+      {phase.kind === 'error' && (
+        <div className="game-overlay">
+          <p>Could not start the sandbox: {phase.message}</p>
+          <button className="btn" onClick={onExit}>
+            Back
+          </button>
+        </div>
+      )}
+      {phase.kind === 'ready' && !locked && (
+        <div className="game-overlay" onClick={() => sandboxRef.current?.requestLock()}>
+          <p className="eyebrow">SOLO SANDBOX · MAP 01</p>
+          <h2>Click to play</h2>
+          <ul className="keys">
+            <li>
+              <kbd>W A S D</kbd> move
+            </li>
+            <li>
+              <kbd>Shift</kbd> sprint
+            </li>
+            <li>
+              <kbd>Ctrl</kbd> / <kbd>C</kbd> crouch
+            </li>
+            <li>
+              <kbd>Space</kbd> jump
+            </li>
+            <li>
+              <kbd>Esc</kbd> release mouse
+            </li>
+          </ul>
+          <button
+            className="btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onExit();
+            }}
+          >
+            Exit to menu
+          </button>
+        </div>
+      )}
+      {phase.kind === 'ready' && locked && <div className="crosshair" aria-hidden="true" />}
+      {dbg && (
+        <pre className="debug" data-testid="debug">
+          {`${dbg.fps} fps  speed ${dbg.speed.toFixed(1)} m/s\n${dbg.sprinting ? 'sprint ' : ''}${dbg.crouching ? 'crouch ' : ''}${dbg.grounded ? 'ground' : 'air'}\nx ${dbg.x.toFixed(1)}  y ${dbg.y.toFixed(1)}  z ${dbg.z.toFixed(1)}`}
+        </pre>
+      )}
+    </div>
+  );
+}
