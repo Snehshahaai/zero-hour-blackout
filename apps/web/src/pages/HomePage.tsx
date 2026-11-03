@@ -11,11 +11,14 @@ interface Props {
   onNavigate: (r: Route) => void;
 }
 
+const ONLINE: { label: string; hint: string }[] = [
+  { label: 'Play Online', hint: 'Competitive matchmaking' },
+  { label: 'Create Private Room', hint: 'Invite friends with a room code' },
+  { label: 'Join With Room Code', hint: 'Enter a 6-character code' },
+];
+
 // Disabled until the corresponding phase lands. Nothing here pretends to work.
 const ACTIONS: Action[] = [
-  { label: 'Play Online', hint: 'Competitive matchmaking', phase: 'Phase 5' },
-  { label: 'Create Private Room', hint: 'Invite friends with a room code', phase: 'Phase 5' },
-  { label: 'Join With Room Code', hint: 'Enter a 6-character code', phase: 'Phase 5' },
   { label: 'Cooperative Operations', hint: 'PvE missions against AI', phase: 'Phase 8' },
 ];
 
@@ -30,6 +33,15 @@ export function HomePage({ onNavigate }: Props) {
         <p className="tagline">{GAME_TAGLINE}</p>
       </section>
       <ul className="actions">
+        {ONLINE.map((a) => (
+          <li key={a.label}>
+            <button className="action action-live" onClick={() => onNavigate('play')}>
+              <span className="action-label">{a.label}</span>
+              <span className="action-hint">{a.hint}</span>
+              <span className="action-phase">Lobby only · match sync in progress</span>
+            </button>
+          </li>
+        ))}
         <li>
           <button className="action action-live" onClick={() => onNavigate('sandbox')}>
             <span className="action-label">Solo Sandbox</span>

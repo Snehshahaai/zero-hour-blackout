@@ -529,3 +529,245 @@ kbd {
     animation-duration: 0.01s;
   }
 }
+
+.panel-wide {
+  max-width: 760px;
+}
+.field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+  max-width: 360px;
+}
+.field label,
+.field-label {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  min-width: 0;
+}
+input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+input[aria-invalid='true'] {
+  border-color: var(--bad);
+}
+.field-error {
+  color: var(--bad);
+  font-size: 12px;
+}
+.segmented {
+  display: flex;
+}
+.segment {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 8px 22px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 12px;
+  margin-right: -1px;
+}
+.segment[aria-checked='true'] {
+  background: #1f2429;
+  border-color: var(--accent);
+  color: var(--accent);
+  position: relative;
+  z-index: 1;
+}
+.play-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.join-box {
+  display: grid;
+  gap: 10px;
+  cursor: default;
+}
+.join-row {
+  display: flex;
+  gap: 8px;
+}
+.code-input {
+  width: 8.5ch;
+  letter-spacing: 0.3em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.action:disabled {
+  opacity: 0.45;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--line);
+}
+.btn-primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-small {
+  padding: 5px 10px;
+  font-size: 10px;
+}
+
+.lobby {
+  padding: 40px 64px;
+  max-width: 980px;
+  display: grid;
+  gap: 18px;
+}
+.lobby-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.lobby-head h2 {
+  margin: 0;
+  font-size: 40px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.room-code {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+.room-code-value {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.room-code-actions {
+  display: flex;
+  gap: 6px;
+}
+.banner {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  background: var(--bg-2);
+  font-size: 13px;
+}
+.banner-warn {
+  border-left-color: var(--bad);
+}
+.teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.team {
+  background: rgb(18 22 26 / 0.85);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--muted);
+  padding: 14px;
+}
+.team-attackers {
+  border-top-color: var(--accent);
+}
+.team-defenders {
+  border-top-color: #4a90b8;
+}
+.team h3 {
+  margin: 0 0 10px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.team h3 span {
+  color: var(--muted);
+}
+.team ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.slot {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  min-height: 40px;
+}
+.slot-me {
+  border-color: #3d464f;
+  background: #171c20;
+}
+.slot-open {
+  border-style: dashed;
+  color: var(--muted);
+  grid-template-columns: 1fr auto;
+}
+.slot-name small {
+  color: var(--muted);
+}
+.slot-gear {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+}
+.slot-state {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  min-width: 9ch;
+  text-align: right;
+}
+.slot-state.is-ready {
+  color: var(--ok);
+}
+.slot-state.is-away {
+  color: var(--bad);
+}
+.loadout {
+  margin: 0;
+  font-size: 13px;
+}
+.loadout small {
+  color: var(--muted);
+}
+.lobby-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.countdown {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+@media (max-width: 800px) {
+  .lobby {
+    padding: 24px 16px;
+  }
+  .room-code {
+    justify-items: start;
+  }
+}

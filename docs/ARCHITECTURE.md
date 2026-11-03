@@ -38,3 +38,13 @@
 - The weapon view model is drawn in a second render pass with a separate camera after a depth clear, so it never clips into walls and has its own FOV.
 - Effects (tracers, decals, sparks) are pooled; nothing is allocated per shot.
 - Testing note: under headless pointer lock, Playwright mouse moves don't produce `movementX`, and click/lock can inject stray movement; browser tests aim by dispatching synthetic `mousemove` events and read yaw/pitch from the debug overlay.
+
+## Lobby / networking notes (Phase 5a)
+
+- The room code is the Colyseus `roomId` (set in `onCreate`, checked for uniqueness), so joining by code is a plain `joinById`; there is no separate code registry to keep in sync.
+- Public quick play uses `defineRoom(...).filterBy(['visibility','format','mode'])`; private rooms carry `visibility: private` and are never matched.
+- Lobby rules are pure functions (`rooms/lobbyRules.ts`) so they are unit-tested without a server. They must tolerate one-shot iterators because Colyseus `MapSchema.values()` is one; a bug there was found by the end-to-end test, not the unit tests.
+- Colyseus kicks a client whose message fails validation (`WITH_ERROR`). The room treats that like a leave (no reconnect grace); only real connection drops get the 30 s hold.
+- The SDK does not auto-reconnect on every close code. The web client stores `room.reconnectionToken` in sessionStorage and retries `client.reconnect()` with backoff; `network.resume()` runs at startup for page refreshes.
+- The UI never reads the Colyseus room: `services/network.ts` publishes validated immutable snapshots (`lobbySnapshotSchema`) consumed via `useSyncExternalStore`.
+- Test gotcha: Playwright `button:has-text("Join")` matches any button containing that substring ("Join an open 1v1 lobby...") — use exact role/name selectors.

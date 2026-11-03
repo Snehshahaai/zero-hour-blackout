@@ -18,3 +18,10 @@ export const ROOM_CODE_LENGTH = 6;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
 export const MAX_PLAYER_NAME_LENGTH = 24;
+
+/** Name of the Colyseus room type used for lobbies and matches. */
+export const MATCH_ROOM_NAME = 'match';
+/** Seconds a disconnected player's slot is held for reconnection. */
+export const RECONNECT_GRACE_SECONDS = 30;
+/** Seconds between "Start Match" and the match beginning. */
+export const MATCH_START_COUNTDOWN_SECONDS = 3;

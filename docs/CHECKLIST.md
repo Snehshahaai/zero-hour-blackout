@@ -43,8 +43,20 @@
 - [ ] Not done: server-side hit validation and lag compensation (Phase 5), spatial/occluded audio (Phase 7), authored weapon model/animations (Blender), hit-location damage for limbs, bullet penetration, weapon switching/other weapon classes, ADS
 - Known: all weapon numbers are first-pass. Time-to-kill: 4 body shots or 2 headshots (108 dmg) kill 100 HP; 2-shot headshot kills probably need tuning. `H` is a dev key that damages the player so the health HUD can be exercised (no enemies exist yet).
 
+## Phase 5a: Rooms and lobby — DONE
+
+- [x] Colyseus `MatchRoom` with schema state; the 6-char room code _is_ the room id (`joinById`)
+- [x] Create private room, join by code (and invite link `#/play/CODE`), public quick play (`filterBy` visibility/format/mode; never matches private rooms)
+- [x] Server-authoritative lobby: team assignment (balanced), team switch, ready, host-only start with rules (both teams, equal sizes, all ready, nobody reconnecting), 3 s countdown, room lock, host migration, unique names
+- [x] Zod validation of room options, join options and every client message; malformed message = kicked, slot freed immediately; per-client rate limiting
+- [x] Disconnect handling: 30 s slot hold, `reconnect(token)`, retry/backoff in the client, resume after page refresh (sessionStorage token)
+- [x] Lobby UI: Play page (callsign, format, quick play / create / join), Lobby page (teams, slots, ready, host, room code, copy code/link, loadout, countdown), error notices
+- [x] 19 server tests (real server + real SDK clients) and rules unit tests; verified with two real browsers incl. mid-lobby refresh
+- [ ] Not done (5b): in-match player sync, server-side movement/hit validation, prediction/interpolation. "Match started" currently only shows a message.
+- [ ] Not done: selectable loadout (only HX-27 exists), friends list/notifications, kick/ban, spectators, team-switch swap requests, persistence/accounts, public room browser.
+
 ## Not implemented yet
 
-Everything else: rooms/lobby/sync (P5), competitive rules (P6), power grid/audio (P7), co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
+Everything else: in-match sync (P5b), competitive rules (P6), power grid/audio (P7), co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
 
-## Next: Phase 5 — Multiplayer
+## Next: Phase 5b — In-match synchronization

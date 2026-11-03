@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 
 export const NAV_ROUTES = ['home', 'play', 'operations', 'loadout', 'profile', 'settings'] as const;
 export type NavRoute = (typeof NAV_ROUTES)[number];
-/** Routes reachable by hash. `sandbox` is full-screen and not in the main navigation. */
-export const ROUTES = [...NAV_ROUTES, 'sandbox'] as const;
+/** Routes reachable by hash. `sandbox` and `lobby` are not in the main navigation. */
+export const ROUTES = [...NAV_ROUTES, 'sandbox', 'lobby'] as const;
 export type Route = (typeof ROUTES)[number];
 
 function parse(hash: string): Route {
-  const name = hash.replace(/^#\/?/, '');
+  const name = hash.replace(/^#\/?/, '').split('/')[0] ?? '';
   return (ROUTES as readonly string[]).includes(name) ? (name as Route) : 'home';
 }
 

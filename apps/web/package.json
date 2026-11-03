@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@colyseus/sdk": "^0.18.9",
     "@zhb/game-engine": "*",
     "@zhb/shared": "*",
     "react": "^19.3.1",
