@@ -16,3 +16,9 @@
 - Colyseus state sync with Rapier prediction/reconciliation needs a prototype in Phase 5 before committing to a snapshot format.
 - Rapier (WASM) is not installed yet; added in Phase 3.
 - Safari support is unevaluated.
+
+## Rendering notes (Phase 2)
+
+- Map geometry is data (`world/MapData.ts`) so the same definition can later feed Rapier colliders and server-side validation.
+- One canvas per renderer lifetime: `GameRenderer.dispose()` force-loses the WebGL context, so React must never reuse a canvas across mounts (StrictMode bug found and fixed in `SceneBackground`).
+- Interior lighting is a handful of non-shadowed point lights toggled by quality; the power-grid mechanic (Phase 7) will drive these.
