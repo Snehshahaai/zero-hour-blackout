@@ -17,6 +17,7 @@ const input = (over: Partial<InputMessage> = {}, sim?: MatchSim): InputMessage =
   crouch: false,
   fire: false,
   reload: false,
+  interact: false,
   yaw: 0,
   pitch: 0,
   renderTime: sim ? sim.timeMs : 0,

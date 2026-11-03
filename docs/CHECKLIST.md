@@ -67,8 +67,21 @@
 - [ ] Not done: positional audio (only distance-scaled volume), remote player animation/models (capsules), clock-sync refinement/ping display, bandwidth measurements, interest management, load test, server tick-rate degradation handling, anti-cheat beyond input validation (aim is client-reported; server adds its own recoil/spread)
 - Known: each `PlayerController.update` steps the whole Rapier world, so server cost grows with player count x 60 Hz; fine for 1v1/2v2, must be measured/optimised before 5v5. Local physics has no other players, so bumping into one causes a (corrected) misprediction.
 
+## Phase 6: Competitive gameplay — DONE (first version)
+
+- [x] `RoundManager` (server, pure + tested): freeze (5 s, inputs ignored) -> live (100 s) -> planted (35 s fuse) -> round end (5 s); first to 4 round wins; sides swap after round 3; scores belong to the fixed lobby teams, not the sides
+- [x] Win conditions: attackers eliminate defenders / bomb detonates; defenders eliminate attackers before a plant / time expires / bomb defused. After a plant, attackers dying does not end the round.
+- [x] Bomb: attackers hold E inside a site zone (3.5 s, grounded, uninterrupted), defenders hold E within 2.5 m of the bomb (5 s); the server validates position, side, aliveness, key held and duration; progress resets if interrupted
+- [x] No mid-round respawns: everyone respawns at the new side's spawns each round, full health/ammo
+- [x] A team with no players left forfeits; after the match the room returns to an unlocked lobby with ready reset
+- [x] HUD: round timer, score (you vs them), round number, side and objective hint, bomb status/site, interact prompt + progress bar, teammate health, kill/round feed, victory/defeat screen; 3D bomb model with LED + accelerating beeps, explosion sound
+- [x] 85 tests (24 rule tests incl. plant/defuse/halftime/forfeit, 46 server incl. match lifecycle); browser-verified full 3-round match with side swap, scoring, results and return to lobby (using shortened round timers and timeouts)
+- [ ] Not done: bomb carrier/pickup/drop (any attacker can plant in a site), defuse kits, economy/buy phase, overtime, bomb explosion damage/effects, per-round sound/UI polish, spectating dead teammates, objective/site visuals beyond the floor disc, balance tuning
+- [ ] Not verified in a real browser: an actual plant/defuse by walking to a site (covered by rule tests only), the 100 s default timings, 2v2 matches
+- Known: players stand still in round-end (client sends no input; server sees an empty queue). Map spawn/site balance is untested.
+
 ## Not implemented yet
 
-Everything else: competitive rules (P6), power grid/audio (P7), co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
+Everything else: power grid/audio (P7), co-op/AI (P8), deployment (P9). The home-screen buttons are intentionally disabled.
 
-## Next: Phase 6 — Competitive rules (rounds, bomb, scoring)
+## Next: Phase 7 — Signature mechanics (power grid, advanced sound, environment)

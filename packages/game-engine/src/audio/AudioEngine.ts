@@ -1,5 +1,15 @@
 export type SoundName =
-  'shot' | 'dry' | 'magOut' | 'magIn' | 'chamber' | 'hit' | 'headshot' | 'kill' | 'impact';
+  | 'shot'
+  | 'dry'
+  | 'magOut'
+  | 'magIn'
+  | 'chamber'
+  | 'hit'
+  | 'headshot'
+  | 'kill'
+  | 'impact'
+  | 'beep'
+  | 'explosion';
 
 type Synth = (t: number, rand: () => number, state: { lp: number }) => number;
 
@@ -130,6 +140,12 @@ export class AudioEngine {
       0.35,
       (t) => (Math.sin(tau * 880 * t) + 0.5 * Math.sin(tau * 1320 * t)) * Math.exp(-t * 12) * 0.4,
     );
+    this.make(ctx, 'beep', 0.09, (t) => Math.sin(tau * 1050 * t) * Math.exp(-t * 28) * 0.7);
+    this.make(ctx, 'explosion', 1.6, (t, r, s) => {
+      s.lp += (0.04 + 0.2 * Math.exp(-t * 3)) * (r() * 2 - s.lp);
+      const boom = Math.sin(tau * (38 + 50 * Math.exp(-t * 5)) * t) * Math.exp(-t * 3.2) * 1.4;
+      return s.lp * Math.exp(-t * 2.2) * 3 + boom;
+    });
     this.make(ctx, 'impact', 0.1, (t, r, s) => {
       s.lp += 0.2 * (r() * 2 - s.lp);
       return s.lp * Math.exp(-t * 45) * 1.5;

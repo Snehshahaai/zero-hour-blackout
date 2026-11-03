@@ -5,7 +5,10 @@ import { createGameServer } from '../server.ts';
 
 // Real server + real SDK clients over WebSocket on an ephemeral port.
 const PORT = 24000 + Math.floor(Math.random() * 4000);
-const server = createGameServer({ CLIENT_ORIGINS: ['http://localhost:5173'] });
+const server = createGameServer(
+  { CLIENT_ORIGINS: ['http://localhost:5173'] },
+  { roundRules: { freezeSeconds: 0.3, roundSeconds: 60, matchEndSeconds: 0.5 } },
+);
 const url = `ws://localhost:${PORT}`;
 const open: Room[] = [];
 
@@ -214,6 +217,7 @@ describe('MatchRoom (end-to-end)', () => {
     host.send('start', {});
     await until(() => host.state.phase === 'inMatch', 'inMatch', 7000);
     await until(() => host.state.sim.size === 2 && host.state.tick > 5, 'sim state replicating');
+    await until(() => host.state.roundPhase === 'live', 'round live');
 
     const mine = () => host.state.sim.get(host.sessionId);
     const startX = mine().x;
@@ -229,6 +233,7 @@ describe('MatchRoom (end-to-end)', () => {
         crouch: false,
         fire: false,
         reload: false,
+        interact: false,
         yaw: -Math.PI / 2,
         pitch: 0,
         renderTime: host.state.timeMs,
@@ -259,10 +264,36 @@ describe('MatchRoom (end-to-end)', () => {
       crouch: false,
       fire: false,
       reload: false,
+      interact: false,
       yaw: 0,
       pitch: 0,
       renderTime: 0,
     });
     await until(() => players(host).length === 1, 'cheater removed');
+  }, 20000);
+
+  it('match lifecycle: forfeit ends the match, then everyone returns to an unlocked lobby', async () => {
+    const host = await create('Host', { format: '1v1' });
+    const guest = await joinCode(host.roomId, 'Guest');
+    await until(() => players(host).length === 2, 'joined');
+    guest.send('setReady', { ready: true });
+    await until(() => playerOf(host, guest.sessionId).ready, 'ready');
+    host.send('start', {});
+    await until(
+      () => host.state.phase === 'inMatch' && host.state.roundPhase === 'live',
+      'live',
+      7000,
+    );
+
+    await guest.leave();
+    await until(() => host.state.roundPhase === 'matchEnd', 'match ended by forfeit');
+    expect(host.state.matchWinner).toBe(playerOf(host, host.sessionId).team);
+    await until(() => host.state.phase === 'lobby', 'back to lobby', 5000);
+    expect(host.state.sim.size).toBe(0);
+    expect(host.state.roundNumber).toBe(0);
+    // Room accepts a new player again, so the lobby is usable for another match.
+    const again = await joinCode(host.roomId, 'Newcomer');
+    await until(() => players(host).length === 2, 'rejoined lobby');
+    expect(again.state.phase).toBe('lobby');
   }, 20000);
 });

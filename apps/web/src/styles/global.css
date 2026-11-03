@@ -849,3 +849,140 @@ input[aria-invalid='true'] {
 .team-tag.team-defenders {
   color: #4a90b8;
 }
+
+.roundbar {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  text-align: center;
+  display: grid;
+  gap: 4px;
+  text-shadow: 0 1px 4px #000;
+}
+.roundbar-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: rgb(11 13 15 / 0.65);
+  padding: 4px 18px;
+  border-bottom: 2px solid var(--accent);
+}
+.score-mine {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--ok);
+  min-width: 1.2ch;
+}
+.score-theirs {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--bad);
+  min-width: 1.2ch;
+}
+.roundbar-clock {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.1em;
+}
+.roundbar-phase {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--accent);
+}
+.roundbar-phase.is-bomb {
+  color: var(--bad);
+  animation: pulse 0.8s infinite alternate;
+}
+.roundbar-meta {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+}
+@keyframes pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .roundbar-phase.is-bomb {
+    animation: none;
+  }
+}
+.prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  background: rgb(11 13 15 / 0.75);
+  border: 1px solid var(--accent);
+  padding: 10px 18px;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  display: grid;
+  gap: 8px;
+  min-width: 260px;
+  text-align: center;
+}
+.prompt-bar {
+  display: block;
+  height: 4px;
+  background: rgb(255 255 255 / 0.15);
+}
+.prompt-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.teammates {
+  position: absolute;
+  left: 20px;
+  top: 70px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  min-width: 140px;
+  font-size: 12px;
+  text-shadow: 0 1px 3px #000;
+}
+.teammates li {
+  display: grid;
+  gap: 3px;
+}
+.teammates li.is-dead {
+  opacity: 0.4;
+}
+.result {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  background: rgb(11 13 15 / 0.82);
+}
+.result h2 {
+  margin: 0;
+  font-size: 72px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.result h2.is-win {
+  color: var(--ok);
+}
+.result h2.is-loss {
+  color: var(--bad);
+}
+.result-score {
+  margin: 0;
+  font-size: 36px;
+  letter-spacing: 0.2em;
+}

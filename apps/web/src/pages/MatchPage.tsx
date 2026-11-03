@@ -113,7 +113,7 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
           </button>
         </div>
       )}
-      {phase.kind === 'ready' && !locked && (
+      {phase.kind === 'ready' && !locked && !hud?.result && (
         <div className="game-overlay" onClick={() => gameRef.current?.requestLock()}>
           <p className="eyebrow">MATCH IN PROGRESS</p>
           <h2>Click to play</h2>
@@ -123,7 +123,8 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
               <kbd>Space</kbd> jump
             </li>
             <li>
-              <kbd>Mouse 1</kbd> fire · <kbd>R</kbd> reload · <kbd>Tab</kbd> scores
+              <kbd>Mouse 1</kbd> fire · <kbd>R</kbd> reload · <kbd>E</kbd> hold to plant / defuse ·{' '}
+              <kbd>Tab</kbd> scores
             </li>
           </ul>
           <button
@@ -148,7 +149,7 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
       {phase.kind === 'ready' && hud && (
         <>
           <MatchHudView hud={hud} />
-          {(showScores || !locked) && <Scoreboard hud={hud} />}
+          {(showScores || !locked) && !hud.result && <Scoreboard hud={hud} />}
         </>
       )}
     </div>
@@ -159,6 +160,28 @@ function MatchHudView({ hud }: { hud: MatchHud }) {
   const hpPct = Math.round((hud.health / hud.maxHealth) * 100);
   return (
     <div className="hud" aria-live="off">
+      <RoundBar hud={hud} />
+      {hud.prompt && (
+        <div className="prompt" role="status">
+          {hud.prompt}
+          {hud.progress > 0 && (
+            <span className="prompt-bar">
+              <span style={{ width: `${Math.round(hud.progress * 100)}%` }} />
+            </span>
+          )}
+        </div>
+      )}
+      <ul className="teammates" aria-label="Teammates">
+        {hud.teammates.map((t) => (
+          <li key={t.name} className={t.alive ? undefined : 'is-dead'}>
+            <span>{t.name}</span>
+            <span className="hud-bar">
+              <span style={{ width: `${t.alive ? t.health : 0}%` }} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      {hud.result && <MatchResult hud={hud} />}
       {hud.hitKind && (
         <div key={hud.hitSeq} className={`hitmarker hit-${hud.hitKind}`} aria-hidden="true" />
       )}
@@ -190,6 +213,55 @@ function MatchHudView({ hud }: { hud: MatchHud }) {
           {hud.reloading ? 'RELOADING' : hud.ammo === 0 ? 'EMPTY · PRESS R' : 'FULL AUTO'}
         </span>
       </div>
+    </div>
+  );
+}
+
+const PHASE_LABEL: Record<MatchHud['round']['phase'], string> = {
+  freeze: 'GET READY',
+  live: 'LIVE',
+  planted: 'BOMB PLANTED',
+  roundEnd: 'ROUND OVER',
+  matchEnd: 'MATCH OVER',
+};
+
+function clock(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function RoundBar({ hud }: { hud: MatchHud }) {
+  const { round, mySide, bomb } = hud;
+  return (
+    <div className="roundbar" role="status">
+      <div className="roundbar-score">
+        <span className="score-mine">{round.mine}</span>
+        <span className="roundbar-clock">{clock(round.timeLeft)}</span>
+        <span className="score-theirs">{round.theirs}</span>
+      </div>
+      <div className={`roundbar-phase${bomb.planted ? ' is-bomb' : ''}`}>
+        {PHASE_LABEL[round.phase]}
+        {bomb.planted && ` · SITE ${bomb.site}`}
+      </div>
+      <div className="roundbar-meta">
+        ROUND {round.number} · YOU ARE {mySide.toUpperCase()} ·{' '}
+        {mySide === 'attackers' ? 'PLANT THE BOMB' : 'STOP THE PLANT'}
+      </div>
+    </div>
+  );
+}
+
+function MatchResult({ hud }: { hud: MatchHud }) {
+  const result = hud.result;
+  if (!result) return null;
+  return (
+    <div className="result" role="alertdialog" aria-label="Match result">
+      <p className="eyebrow">MATCH COMPLETE</p>
+      <h2 className={result.won ? 'is-win' : 'is-loss'}>{result.won ? 'Victory' : 'Defeat'}</h2>
+      <p className="result-score">
+        {hud.round.mine} – {hud.round.theirs}
+      </p>
+      <p className="note">Returning to the lobby…</p>
     </div>
   );
 }

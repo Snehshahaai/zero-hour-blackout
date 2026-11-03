@@ -14,7 +14,6 @@ import {
 } from '@zhb/game-engine/sim';
 import { MATCH_TICK_RATE, type InputMessage, type Team } from '@zhb/shared';
 
-const RESPAWN_SECONDS = 3;
 /** How far back a shot may be rewound (ms). Caps how much lag a shooter can "buy". */
 const MAX_REWIND_MS = 250;
 const HISTORY_TICKS = 30;
@@ -45,7 +44,14 @@ export type SimEvent =
 export interface SimPlayer {
   id: string;
   name: string;
+  /** Fixed lobby team: scoring and friendly fire. */
   team: Team;
+  /** Current side (attackers/defenders); swaps at halftime. Decides spawns and objectives. */
+  side: Team;
+  /** Holding the interact key this tick. */
+  interact: boolean;
+  /** 0..1 progress of the plant/defuse this player is performing. */
+  interactProgress: number;
   controller: PlayerController;
   weapon: WeaponSim;
   health: Health;
@@ -81,9 +87,14 @@ export class MatchSim {
   private nextNumericId = 1;
   private readonly byNumericId = new Map<number, SimPlayer>();
 
+  /** While true, inputs are discarded (round freeze time). */
+  frozen = false;
+
   constructor(
     private readonly map: MapDef,
     private readonly emit: (e: SimEvent) => void,
+    /** Seconds until a dead player respawns on their own; null = only at round start. */
+    private readonly respawnSeconds: number | null = 3,
   ) {
     this.physics = PhysicsWorld.fromMap(map);
     this.hitscan = new Hitscan(this.physics);
@@ -111,6 +122,9 @@ export class MatchSim {
       id,
       name,
       team,
+      side: team,
+      interact: false,
+      interactProgress: 0,
       controller,
       weapon: new WeaponSim(HX27, (numericId * 2654435761) >>> 0),
       health: new Health(100),
@@ -154,8 +168,10 @@ export class MatchSim {
     this.tick++;
     for (const p of this.players.values()) {
       if (!p.alive) {
-        p.respawnIn -= FIXED_DT;
-        if (p.respawnIn <= 0) this.respawn(p);
+        if (this.respawnSeconds !== null) {
+          p.respawnIn -= FIXED_DT;
+          if (p.respawnIn <= 0) this.respawn(p);
+        }
         continue;
       }
       this.stepPlayer(p);
@@ -170,6 +186,12 @@ export class MatchSim {
    * simulated that tick, so the server never runs ahead of what the client actually did.
    */
   private stepPlayer(p: SimPlayer): void {
+    if (this.frozen) {
+      p.queue.length = 0;
+      p.credit = 0;
+      p.interact = false;
+      return;
+    }
     p.credit = Math.min(MAX_CREDIT, p.credit + 1);
     while (p.credit >= 1 && p.queue.length > 0) {
       const input = p.queue.shift() as InputMessage;
@@ -184,6 +206,7 @@ export class MatchSim {
   private applyInput(p: SimPlayer, input: InputMessage): void {
     p.yaw = input.yaw;
     p.pitch = input.pitch;
+    p.interact = input.interact;
 
     const c = p.controller;
     c.update({
@@ -268,14 +291,16 @@ export class MatchSim {
     victim.alive = false;
     victim.deaths++;
     killer.kills++;
-    victim.respawnIn = RESPAWN_SECONDS;
+    victim.respawnIn = this.respawnSeconds ?? 0;
+    victim.interact = false;
+    victim.interactProgress = 0;
     victim.queue.length = 0;
     victim.controller.setEnabled(false);
     this.emit({ type: 'kill', killer: killer.id, victim: victim.id });
   }
 
   private respawn(p: SimPlayer): void {
-    const spawn = this.nextSpawn(p.team);
+    const spawn = this.nextSpawn(p.side);
     p.controller.setEnabled(true);
     p.controller.setState({
       x: spawn[0],
@@ -292,6 +317,33 @@ export class MatchSim {
     p.alive = true;
     p.lastInput = null;
     p.prevFire = false;
+    p.queue.length = 0;
+    p.interact = false;
+    p.interactProgress = 0;
+    p.yaw = p.side === 'attackers' ? -Math.PI / 2 : Math.PI / 2;
+    p.pitch = 0;
+  }
+
+  /** Start of a round: everyone (dead or alive) respawns at their current side's spawns. */
+  resetRound(sideOf: (p: SimPlayer) => Team): void {
+    this.spawnCursor.attackers = 0;
+    this.spawnCursor.defenders = 0;
+    for (const p of this.players.values()) {
+      p.side = sideOf(p);
+      this.respawn(p);
+    }
+  }
+
+  alivePerSide(): Record<Team, number> {
+    const n: Record<Team, number> = { attackers: 0, defenders: 0 };
+    for (const p of this.players.values()) if (p.alive) n[p.side]++;
+    return n;
+  }
+
+  playersPerTeam(): Record<Team, number> {
+    const n: Record<Team, number> = { attackers: 0, defenders: 0 };
+    for (const p of this.players.values()) n[p.team]++;
+    return n;
   }
 
   private nextSpawn(team: Team): readonly [number, number] {

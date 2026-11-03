@@ -1,11 +1,16 @@
 import { defineRoom, defineServer, matchMaker } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { MATCH_ROOM_NAME } from '@zhb/shared';
+import type { RoundRules } from '@zhb/shared';
 import type { ServerConfig } from './config.ts';
 import { MatchRoom } from './rooms/MatchRoom.ts';
 import { createRoutes } from './routes.ts';
 
-export function createGameServer(config: Pick<ServerConfig, 'CLIENT_ORIGINS'>) {
+export function createGameServer(
+  config: Pick<ServerConfig, 'CLIENT_ORIGINS'>,
+  options: { roundRules?: Partial<RoundRules> } = {},
+) {
+  MatchRoom.roundRules = options.roundRules ?? {};
   // Colyseus defaults to `Access-Control-Allow-Origin: <any origin>`. Restrict it to our web origins.
   matchMaker.controller.getCorsHeaders = (headers) => {
     const origin = headers.get('origin');

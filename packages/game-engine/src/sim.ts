@@ -9,3 +9,4 @@ export * from './entities/PlayerController.ts';
 export * from './weapons/index.ts';
 export * from './world/MapData.ts';
 export * from './world/map01.ts';
+export * from './world/objectives.ts';

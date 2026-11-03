@@ -25,3 +25,22 @@ export const MATCH_ROOM_NAME = 'match';
 export const RECONNECT_GRACE_SECONDS = 30;
 /** Seconds between "Start Match" and the match beginning. */
 export const MATCH_START_COUNTDOWN_SECONDS = 3;
+
+/** Competitive round rules (seconds unless noted). Overridable per match for tests. */
+export const ROUND_RULES = {
+  freezeSeconds: 5,
+  roundSeconds: 100,
+  plantSeconds: 3.5,
+  defuseSeconds: 5,
+  fuseSeconds: 35,
+  roundEndSeconds: 5,
+  matchEndSeconds: 12,
+  /** First team to this many round wins takes the match. */
+  roundsToWin: 4,
+  /** Sides swap after this many rounds have been played. */
+  swapAfterRounds: 3,
+  /** A plant is allowed within (site radius + this) metres of the site centre. */
+  plantRadiusBonus: 1,
+  defuseRange: 2.5,
+} as const;
+export type RoundRules = { -readonly [K in keyof typeof ROUND_RULES]: number };

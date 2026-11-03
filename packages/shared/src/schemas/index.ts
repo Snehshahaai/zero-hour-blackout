@@ -91,6 +91,8 @@ export const inputMessageSchema = z.object({
   crouch: z.boolean(),
   fire: z.boolean(),
   reload: z.boolean(),
+  /** Hold to plant (attackers at a site) or defuse (defenders at the bomb). */
+  interact: z.boolean(),
   /** View angles in radians, WITHOUT weapon recoil (the server adds its own). */
   yaw: z.number(),
   pitch: z.number().min(-1.6).max(1.6),

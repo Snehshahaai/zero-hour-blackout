@@ -19,6 +19,8 @@ export const SimPlayerSchema = schema(
     id: t.string().default(''),
     name: t.string().default(''),
     team: t.string().default('attackers'),
+    side: t.string().default('attackers'),
+    interactProgress: t.float32().default(0),
     x: t.float32().default(0),
     y: t.float32().default(0),
     z: t.float32().default(0),
@@ -55,6 +57,18 @@ export const LobbyState = schema(
     countdown: t.uint8().default(0),
     players: t.map(PlayerSchema),
     /** Server simulation tick (60 Hz) and its time in ms: clients interpolate against this. */
+    roundPhase: t.string().default('freeze'),
+    roundNumber: t.uint8().default(0),
+    /** Seconds left in the current phase (bomb fuse while planted). */
+    phaseTimeLeft: t.float32().default(0),
+    /** Round wins per fixed lobby team. */
+    scoreAttackers: t.uint8().default(0),
+    scoreDefenders: t.uint8().default(0),
+    /** True after halftime: lobby "attackers" now play the defender side and vice versa. */
+    swapped: t.boolean().default(false),
+    bombState: t.string().default('none'),
+    bombSite: t.string().default(''),
+    matchWinner: t.string().default(''),
     tick: t.uint32().default(0),
     timeMs: t.float64().default(0),
     sim: t.map(SimPlayerSchema),

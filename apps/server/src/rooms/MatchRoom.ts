@@ -5,6 +5,7 @@ import {
   MATCH_TICK_RATE,
   RECONNECT_GRACE_SECONDS,
   inputMessageSchema,
+  type RoundRules,
   type Team,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
@@ -26,6 +27,7 @@ import {
 } from './lobbyRules.ts';
 import { MAP_01, initPhysics } from '@zhb/game-engine/sim';
 import { MatchSim, type SimEvent } from '../sim/MatchSim.ts';
+import { RoundManager, type RoundEvent } from '../sim/RoundManager.ts';
 import { LobbyState, PlayerSchema, SimPlayerSchema } from './schema.ts';
 
 interface Metadata {
@@ -52,7 +54,10 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   private readonly limiter = new RateLimiter();
   /** Inputs arrive at ~60 Hz per client, so they get their own, much larger budget. */
   private readonly inputLimiter = new RateLimiter(120, 140);
+  /** Server-side round timing; set by `createGameServer` (tests use short rounds). Never client-controlled. */
+  static roundRules: Partial<RoundRules> = {};
   private sim: MatchSim | null = null;
+  private rounds: RoundManager | null = null;
   private joinCounter = 0;
   private countdownTimer: { clear(): void } | null = null;
 
@@ -128,6 +133,7 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     this.countdownTimer?.clear();
     this.sim?.dispose();
     this.sim = null;
+    this.rounds = null;
   }
 
   override messages = {
@@ -171,12 +177,14 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
   private async startMatch(): Promise<void> {
     await initPhysics();
     if (this.sim || this.state.phase !== 'inMatch') return;
-    const sim = new MatchSim(MAP_01, (e) => this.onSimEvent(e));
+    const sim = new MatchSim(MAP_01, (e) => this.onSimEvent(e), null); // dead stay dead until next round
     for (const p of this.state.players.values()) {
       sim.addPlayer(p.id, p.name, p.team as Team);
       this.state.sim.set(p.id, new SimPlayerSchema());
     }
     this.sim = sim;
+    this.rounds = new RoundManager(sim, MAP_01, (e) => this.onRoundEvent(e), MatchRoom.roundRules);
+    this.rounds.start();
     this.patchRate = 50; // 20 Hz state broadcast; the sim itself ticks at 60 Hz
     this.setSimulationInterval(() => this.stepSim(), 1000 / MATCH_TICK_RATE);
   }
@@ -185,6 +193,19 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     const sim = this.sim;
     if (!sim) return;
     sim.step();
+    this.rounds?.step();
+    const r = this.rounds;
+    if (r) {
+      this.state.roundPhase = r.phase;
+      this.state.roundNumber = r.round;
+      this.state.phaseTimeLeft = Math.max(0, Math.round(r.timeLeft * 10) / 10);
+      this.state.scoreAttackers = r.scores.attackers;
+      this.state.scoreDefenders = r.scores.defenders;
+      this.state.swapped = r.swapped;
+      this.state.bombState = r.bomb.planted ? 'planted' : 'none';
+      this.state.bombSite = r.bomb.site;
+      this.state.matchWinner = r.matchWinner ?? '';
+    }
     this.state.tick = sim.tick;
     this.state.timeMs = sim.timeMs;
     for (const sp of sim.players.values()) {
@@ -194,6 +215,8 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       view.id = sp.id;
       view.name = sp.name;
       view.team = sp.team;
+      view.side = sp.side;
+      view.interactProgress = Math.round(sp.interactProgress * 100) / 100;
       view.x = st.x;
       view.y = st.y;
       view.z = st.z;
@@ -213,6 +236,34 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
       view.deaths = sp.deaths;
       view.ackSeq = sp.ackSeq;
     }
+  }
+
+  private onRoundEvent(e: RoundEvent): void {
+    if (e.type === 'finished') {
+      this.resetToLobby();
+      return;
+    }
+    this.broadcast(e.type === 'bomb' ? 'bomb' : 'round', e);
+  }
+
+  /** Match is over: tear down the simulation and return everyone to the lobby, unready. */
+  private resetToLobby(): void {
+    this.sim?.dispose();
+    this.sim = null;
+    this.rounds = null;
+    this.state.sim.clear();
+    for (const p of this.state.players.values()) p.ready = false;
+    this.state.phase = 'lobby';
+    this.state.countdown = 0;
+    this.state.roundPhase = 'freeze';
+    this.state.roundNumber = 0;
+    this.state.scoreAttackers = 0;
+    this.state.scoreDefenders = 0;
+    this.state.swapped = false;
+    this.state.bombState = 'none';
+    this.state.bombSite = '';
+    this.state.matchWinner = '';
+    void this.unlock();
   }
 
   private onSimEvent(e: SimEvent): void {

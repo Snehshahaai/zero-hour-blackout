@@ -1,4 +1,11 @@
-import type { GraphicsQuality, InputMessage, Team } from '@zhb/shared';
+import {
+  ROUND_RULES,
+  type BombState,
+  type GraphicsQuality,
+  type InputMessage,
+  type RoundPhase,
+  type Team,
+} from '@zhb/shared';
 import {
   CapsuleGeometry,
   Group,
@@ -22,6 +29,7 @@ import { HX27 } from './weapons/WeaponDef.ts';
 import { WeaponSim } from './weapons/WeaponSim.ts';
 import { buildMap, type ProgressFn } from './world/buildMap.ts';
 import { MAP_01 } from './world/map01.ts';
+import { siteAt } from './world/objectives.ts';
 import type { HitKind } from './Sandbox.ts';
 
 // ---- Network contract (the web app adapts a Colyseus room to this; the engine has no Colyseus dep) ----
@@ -30,6 +38,8 @@ export interface NetPlayer {
   id: string;
   name: string;
   team: Team;
+  side: Team;
+  interactProgress: number;
   x: number;
   y: number;
   z: number;
@@ -50,8 +60,39 @@ export interface NetPlayer {
   ackSeq: number;
 }
 
+export interface RoundInfo {
+  phase: RoundPhase;
+  number: number;
+  /** Seconds left in the phase (bomb fuse while planted). */
+  timeLeft: number;
+  scoreAttackers: number;
+  scoreDefenders: number;
+  swapped: boolean;
+  bombState: BombState;
+  bombSite: string;
+  matchWinner: '' | Team;
+}
+
+export type NetRoundEvent =
+  | { type: 'roundStart'; round: number }
+  | {
+      type: 'roundEnd';
+      round: number;
+      winnerTeam: Team;
+      winnerSide: Team;
+      reason: 'elimination' | 'time' | 'detonation' | 'defused';
+    }
+  | { type: 'halftime' }
+  | { type: 'matchEnd'; winnerTeam: Team; reason: 'score' | 'forfeit' };
+
+export interface NetBombEvent {
+  event: 'planted' | 'defused' | 'exploded';
+  site: string;
+}
+
 export interface MatchSnapshot {
   tick: number;
+  round: RoundInfo;
   /** Server time in ms; remote players are interpolated against this clock. */
   timeMs: number;
   players: Record<string, NetPlayer>;
@@ -83,6 +124,8 @@ export interface MatchNet {
   onShot(cb: (e: NetShot) => void): () => void;
   onHit(cb: (e: NetHit) => void): () => void;
   onKill(cb: (e: NetKill) => void): () => void;
+  onRound(cb: (e: NetRoundEvent) => void): () => void;
+  onBomb(cb: (e: NetBombEvent) => void): () => void;
 }
 
 export interface ScoreRow {
@@ -106,6 +149,17 @@ export interface MatchHud {
   hitKind: HitKind | null;
   scores: ScoreRow[];
   feed: string[];
+  myTeam: Team;
+  mySide: Team;
+  round: { phase: RoundPhase; number: number; timeLeft: number; mine: number; theirs: number };
+  bomb: { planted: boolean; site: string };
+  /** Context action available right now, e.g. "Hold E to plant". */
+  prompt: string | null;
+  /** 0..1 progress of the plant/defuse you are performing. */
+  progress: number;
+  teammates: { name: string; health: number; alive: boolean }[];
+  /** Set once the match is decided. */
+  result: { won: boolean; reason: string } | null;
 }
 
 export interface MatchGame {
@@ -204,6 +258,11 @@ export async function createMatchGame(
   let wasAlive = true;
   let initialised = false;
   let reconcileCount = 0;
+  let lastRound = -1;
+  let roundPhase: RoundPhase = 'freeze';
+  let bombTimeLeft = 0;
+  let bombSite = '';
+  let beepClock = 0;
   let fps = 60;
   const prev = { x: spawn[0], y: 0.05, z: spawn[1], eye: Number(MOVEMENT.standEye) };
   const curr = { ...prev };
@@ -224,9 +283,25 @@ export async function createMatchGame(
     hitKind: null,
     scores: [],
     feed: [],
+    myTeam: 'attackers',
+    mySide: 'attackers',
+    round: { phase: 'freeze', number: 0, timeLeft: 0, mine: 0, theirs: 0 },
+    bomb: { planted: false, site: '' },
+    prompt: null,
+    progress: 0,
+    teammates: [],
+    result: null,
   };
+  const snapshotHud = (): MatchHud => ({
+    ...hud,
+    scores: [...hud.scores],
+    feed: [...hud.feed],
+    teammates: [...hud.teammates],
+    round: { ...hud.round },
+    bomb: { ...hud.bomb },
+  });
   const emitHud = () => {
-    const snap = { ...hud, scores: [...hud.scores], feed: [...hud.feed] };
+    const snap = snapshotHud();
     for (const l of listeners) l(snap);
   };
 
@@ -267,7 +342,7 @@ export async function createMatchGame(
     for (const p of Object.values(snap.players)) {
       latestNames.set(p.id, p.name);
       if (p.id === net.mySessionId) {
-        reconcile(p);
+        reconcile(p, snap.round.number);
         continue;
       }
       let r = remotes.get(p.id);
@@ -294,7 +369,28 @@ export async function createMatchGame(
     }
 
     const me = snap.players[net.mySessionId];
+    const ri = snap.round;
+    roundPhase = ri.phase;
+    bombSite = ri.bombState === 'planted' ? ri.bombSite : '';
+    bombTimeLeft = ri.bombState === 'planted' ? ri.timeLeft : 0;
     if (me) {
+      hud.myTeam = me.team;
+      hud.mySide = me.side;
+      const mine = me.team === 'attackers' ? ri.scoreAttackers : ri.scoreDefenders;
+      const theirs = me.team === 'attackers' ? ri.scoreDefenders : ri.scoreAttackers;
+      hud.round = { phase: ri.phase, number: ri.number, timeLeft: ri.timeLeft, mine, theirs };
+      hud.bomb = { planted: ri.bombState === 'planted', site: ri.bombSite };
+      hud.progress = me.interactProgress;
+      hud.result = ri.matchWinner
+        ? {
+            won: ri.matchWinner === me.team,
+            reason: ri.phase === 'matchEnd' ? 'Match complete' : '',
+          }
+        : null;
+      hud.teammates = Object.values(snap.players)
+        .filter((p) => p.team === me.team && p.id !== me.id)
+        .map((p) => ({ name: p.name, health: p.health, alive: p.alive }));
+      hud.prompt = computePrompt(me, ri);
       hud.ammo = me.ammo;
       hud.reserve = me.reserve;
       hud.reloading = me.reloading;
@@ -314,7 +410,9 @@ export async function createMatchGame(
     emitHud();
   });
 
-  function reconcile(me: NetPlayer): void {
+  function reconcile(me: NetPlayer, roundNumber: number): void {
+    const roundChanged = roundNumber !== lastRound;
+    lastRound = roundNumber;
     const serverState = {
       x: me.x,
       y: me.y,
@@ -326,7 +424,7 @@ export async function createMatchGame(
       crouching: me.crouching,
     };
     // First snapshot, or just respawned: take the server's word, drop all prediction.
-    if (!initialised || (me.alive && !wasAlive)) {
+    if (!initialised || (me.alive && !wasAlive) || roundChanged) {
       const first = !initialised;
       initialised = true;
       wasAlive = me.alive;
@@ -336,7 +434,10 @@ export async function createMatchGame(
       weapon.refill();
       Object.assign(curr, { x: me.x, y: me.y, z: me.z, eye: player.state.eyeHeight });
       Object.assign(prev, curr);
-      if (first) fpCamera.yaw = me.yaw; // face the way the server spawned us
+      if (first || roundChanged) {
+        fpCamera.yaw = me.yaw; // face the way the server spawned us
+        fpCamera.pitch = 0;
+      }
       return;
     }
     wasAlive = me.alive;
@@ -364,6 +465,30 @@ export async function createMatchGame(
     Object.assign(prev, curr);
   }
 
+  function computePrompt(me: NetPlayer, ri: RoundInfo): string | null {
+    if (!me.alive || (ri.phase !== 'live' && ri.phase !== 'planted')) return null;
+    const s = player.state;
+    if (ri.bombState === 'planted') {
+      if (me.side !== 'defenders') return null;
+      const o = MAP_01.objectives.find((x) => x.id === ri.bombSite);
+      if (o && Math.hypot(s.x - o.center[0], s.z - o.center[1]) <= ROUND_RULES.defuseRange)
+        return 'Hold E to defuse';
+      return null;
+    }
+    if (me.side !== 'attackers') return null;
+    const site = siteAt(MAP_01, s.x, s.z, ROUND_RULES.plantRadiusBonus);
+    return site ? `Hold E to plant at site ${site.id}` : null;
+  }
+
+  const pushFeed = (line: string) => {
+    hud.feed = [...hud.feed, line].slice(-5);
+    emitHud();
+    setTimeout(() => {
+      hud.feed = hud.feed.slice(1);
+      emitHud();
+    }, 6000);
+  };
+
   // ---- server events ----
   const offShot = net.onShot((e) => {
     if (e.shooter !== net.mySessionId) {
@@ -379,14 +504,72 @@ export async function createMatchGame(
     audio.play(e.killed ? 'kill' : e.headshot ? 'headshot' : 'hit', 0.8);
     emitHud();
   });
-  const offKill = net.onKill((e) => {
-    hud.feed = [...hud.feed, `${nameOf(e.killer)}  ▸  ${nameOf(e.victim)}`].slice(-4);
-    emitHud();
-    setTimeout(() => {
-      hud.feed = hud.feed.slice(1);
-      emitHud();
-    }, 6000);
+  const offKill = net.onKill((e) => pushFeed(`${nameOf(e.killer)}  ▸  ${nameOf(e.victim)}`));
+  const offRound = net.onRound((e) => {
+    if (e.type === 'roundEnd') {
+      const mine = e.winnerTeam === hud.myTeam;
+      const why = {
+        elimination: 'by elimination',
+        time: 'as time ran out',
+        detonation: 'with a detonation',
+        defused: 'by defusing the bomb',
+      }[e.reason];
+      pushFeed(`${mine ? 'Your team' : 'Enemy team'} won the round ${why}`);
+    } else if (e.type === 'halftime') pushFeed('Sides have swapped');
   });
+  const offBomb = net.onBomb((e) => {
+    if (e.event === 'exploded') audio.play('explosion', 1);
+    pushFeed(
+      e.event === 'planted'
+        ? `Bomb planted at site ${e.site}`
+        : e.event === 'defused'
+          ? `Bomb defused at site ${e.site}`
+          : `Bomb detonated at site ${e.site}`,
+    );
+  });
+
+  // ---- bomb model + countdown beeps ----
+  let bombMesh: Group | null = null;
+  let bombLed: MeshStandardMaterial | null = null;
+  const bombGeo = new BoxGeometry(0.34, 0.14, 0.22);
+  const ledGeo = new SphereGeometry(0.035, 8, 6);
+  function removeBomb(): void {
+    if (bombMesh) gr.scene.remove(bombMesh);
+    bombMesh = null;
+    bombLed?.dispose();
+    bombLed = null;
+  }
+  function updateBomb(dt: number): void {
+    const o = bombSite ? MAP_01.objectives.find((x) => x.id === bombSite) : undefined;
+    if (!o) {
+      if (bombMesh) removeBomb();
+      return;
+    }
+    if (!bombMesh) {
+      bombMesh = new Group();
+      const body = new Mesh(bombGeo, new MeshStandardMaterial({ color: 0x3b4048, roughness: 0.6 }));
+      bombLed = new MeshStandardMaterial({
+        color: 0x300000,
+        emissive: 0xff2010,
+        emissiveIntensity: 0,
+      });
+      const led = new Mesh(ledGeo, bombLed);
+      led.position.set(0.1, 0.1, 0);
+      bombMesh.add(body, led);
+      bombMesh.position.set(o.center[0], 0.08, o.center[1]);
+      gr.scene.add(bombMesh);
+    }
+    // Beeps get faster as the fuse burns down.
+    const interval = Math.max(0.1, Math.min(1, bombTimeLeft / ROUND_RULES.fuseSeconds));
+    beepClock += dt;
+    if (beepClock >= interval) {
+      beepClock = 0;
+      audio.play('beep', 0.5);
+      if (bombLed) bombLed.emissiveIntensity = 4;
+    } else if (bombLed) {
+      bombLed.emissiveIntensity = Math.max(0, bombLed.emissiveIntensity - dt * 18);
+    }
+  }
 
   const cues = { magOut: false, magIn: false, chamber: false };
   const eye = (): Point3 => ({ x: curr.x, y: curr.y + curr.eye, z: curr.z });
@@ -399,7 +582,8 @@ export async function createMatchGame(
         prev.y = curr.y;
         prev.z = curr.z;
         prev.eye = curr.eye;
-        const active = input.locked && initialised && hud.alive;
+        const canAct = hud.alive && (roundPhase === 'live' || roundPhase === 'planted');
+        const active = input.locked && initialised && canAct;
         const rt = serverOffset === null ? 0 : serverNow() - INTERP_DELAY_MS;
 
         if (active) {
@@ -412,6 +596,7 @@ export async function createMatchGame(
             crouch: input.isDown('ControlLeft') || input.isDown('KeyC'),
             fire: input.isMouseDown(0),
             reload: input.consumePressed('KeyR'),
+            interact: input.isDown('KeyE'),
             yaw: fpCamera.yaw,
             pitch: fpCamera.pitch,
             renderTime: rt,
@@ -521,6 +706,7 @@ export async function createMatchGame(
           r.group.rotation.y = lerpAngle(a.yaw, b.yaw, k);
           r.group.scale.y = b.crouching ? 0.72 : 1;
         }
+        updateBomb(frameDt);
         gr.render();
         if (frameDt > 0) fps += (1 / frameDt - fps) * 0.1;
       },
@@ -540,7 +726,7 @@ export async function createMatchGame(
     onLockChange: (l) => input.onLockChange(l),
     onHud(l) {
       listeners.add(l);
-      l({ ...hud, scores: [...hud.scores], feed: [...hud.feed] });
+      l(snapshotHud());
       return () => listeners.delete(l);
     },
     setQuality(q) {
@@ -566,6 +752,9 @@ export async function createMatchGame(
       offShot();
       offHit();
       offKill();
+      offRound();
+      offBomb();
+      removeBomb();
       input.dispose();
       audio.dispose();
       listeners.clear();
@@ -577,6 +766,8 @@ export async function createMatchGame(
       bodyGeo.dispose();
       headGeo.dispose();
       gunGeo.dispose();
+      bombGeo.dispose();
+      ledGeo.dispose();
       effects.dispose();
       viewModel.dispose();
       physics.dispose();

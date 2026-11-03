@@ -12,10 +12,13 @@ import {
 import type {
   MatchNet,
   MatchSnapshot,
+  NetBombEvent,
   NetHit,
   NetKill,
   NetPlayer,
+  NetRoundEvent,
   NetShot,
+  RoundInfo,
 } from '@zhb/game-engine';
 import { SERVER_HTTP_URL } from './serverStatus.ts';
 
@@ -147,8 +150,32 @@ class Network {
         tick: number;
         timeMs: number;
         sim: Record<string, NetPlayer>;
+        roundPhase: RoundInfo['phase'];
+        roundNumber: number;
+        phaseTimeLeft: number;
+        scoreAttackers: number;
+        scoreDefenders: number;
+        swapped: boolean;
+        bombState: RoundInfo['bombState'];
+        bombSite: string;
+        matchWinner: RoundInfo['matchWinner'];
       };
-      return { tick: raw.tick, timeMs: raw.timeMs, players: raw.sim };
+      return {
+        tick: raw.tick,
+        timeMs: raw.timeMs,
+        players: raw.sim,
+        round: {
+          phase: raw.roundPhase,
+          number: raw.roundNumber,
+          timeLeft: raw.phaseTimeLeft,
+          scoreAttackers: raw.scoreAttackers,
+          scoreDefenders: raw.scoreDefenders,
+          swapped: raw.swapped,
+          bombState: raw.bombState,
+          bombSite: raw.bombSite,
+          matchWinner: raw.matchWinner,
+        },
+      };
     };
     const sub = <T>(type: string, cb: (e: T) => void) => room.onMessage(type, cb);
     return {
@@ -169,6 +196,8 @@ class Network {
       onShot: (cb) => sub<NetShot>('shot', cb),
       onHit: (cb) => sub<NetHit>('hit', cb),
       onKill: (cb) => sub<NetKill>('kill', cb),
+      onRound: (cb) => sub<NetRoundEvent>('round', cb),
+      onBomb: (cb) => sub<NetBombEvent>('bomb', cb),
     };
   }
 

@@ -56,3 +56,11 @@
 - A first version repeated the last input when the queue was empty; under bursty clients this made the server run ahead (22 corrections / 2.5 s). Not simulating starved players fixed it (0 corrections).
 - Interpolation clock: `serverOffset = snapshot.timeMs - performance.now()` (smoothed); remote players render at `serverNow - 110 ms`; the same value is sent as `renderTime` so rewind matches what the shooter saw.
 - Cheating surface still open: view angles are client-reported (aimbots), movement is validated only by running the same simulation (no speed hack, but teleports are impossible too because only inputs are accepted), no bandwidth/abuse limits beyond the input rate limiter.
+
+## Competitive rules notes (Phase 6)
+
+- Teams vs sides: `team` is fixed for the match (scoring, friendly fire); `side` (attackers/defenders) decides spawns and objectives and flips at halftime. Mixing these up is the main source of bugs here, so rule tests cover the swap explicitly.
+- `RoundManager` owns phase/timer/score/bomb and drives `MatchSim` (`frozen`, `resetRound`, `alivePerSide`). The room only copies its state into the Colyseus schema and forwards its events (`round`, `bomb`) to clients.
+- Round timing is server configuration (`MatchRoom.roundRules`, set by `createGameServer`), never taken from client options, so clients cannot shorten rounds.
+- The client does not predict during freeze/round-end/death: it sends no inputs, the server doesn't simulate those players, so nothing diverges. It hard-resets prediction whenever the round number changes (survivors are teleported to spawns).
+- Plant/defuse is deliberately a _hold_ interaction that doesn't lock movement, which avoids needing client-side prediction of an "interacting" state; revisit if it feels wrong in playtests.
