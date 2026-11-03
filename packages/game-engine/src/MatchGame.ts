@@ -1063,6 +1063,18 @@ export async function createMatchGame(
     },
     { tickRate: 1 / FIXED_DT },
   );
+  // Read-only render stats for diagnostics (console: __zhbStats()).
+  (globalThis as { __zhbStats?: () => unknown }).__zhbStats = () => {
+    const i = gr.renderer.info;
+    return {
+      geometries: i.memory.geometries,
+      textures: i.memory.textures,
+      programs: i.programs?.length ?? 0,
+      calls: i.render.calls,
+      triangles: i.render.triangles,
+      sceneChildren: gr.scene.children.length,
+    };
+  };
   loop.start();
 
   return {
