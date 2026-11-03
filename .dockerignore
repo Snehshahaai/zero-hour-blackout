@@ -5,7 +5,9 @@ node_modules
 .github
 docs
 assets
-apps/web
+# The server image needs only the web app's package.json (npm workspaces resolve all members).
+apps/web/*
+!apps/web/package.json
 *.md
 .env
 .env.*
