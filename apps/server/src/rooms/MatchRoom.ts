@@ -31,7 +31,7 @@ import {
   uniqueName,
 } from './lobbyRules.ts';
 import { MAP_01, initPhysics } from '@zhb/game-engine/sim';
-import { metrics } from '../services/metrics.ts';
+import { metrics, snapshotMetrics } from '../services/metrics.ts';
 import { MatchSim, type SimEvent } from '../sim/MatchSim.ts';
 import { CompetitiveBots } from '../sim/CompetitiveBots.ts';
 import { CoopMission, type MissionEvent } from '../sim/CoopMission.ts';
@@ -160,6 +160,22 @@ export class MatchRoom extends Room<{ state: LobbyState; metadata: Metadata }> {
     // NOTE: an oversized-message disconnect surfaces as 1006, indistinguishable from a real network
     // drop, so such a client does hold its seat for the grace period (bounded; see docs/SECURITY.md).
     const dropped = code !== CloseCode.CONSENTED && code !== CloseCode.WITH_ERROR;
+    const health = snapshotMetrics({ rooms: 0, clients: 0 });
+    // One log line per disconnect so a flaky link / proxy / ping timeout shows up in the host's logs.
+    console.log(
+      JSON.stringify({
+        type: 'client_left',
+        code,
+        dropped,
+        room: this.roomId,
+        phase: this.state.phase,
+        round: this.state.roundNumber,
+        tick: this.sim?.tick ?? 0,
+        loopLagP99Ms: Math.round(health.eventLoopLagMs.p99),
+        simStepP99Ms: Math.round(health.simStepMs.p99 * 10) / 10,
+        rssMB: Math.round(health.memoryMB.rss),
+      }),
+    );
 
     if (dropped) {
       player.connected = false;

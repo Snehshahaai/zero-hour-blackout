@@ -111,9 +111,10 @@ export function MatchPage({ onLeave }: { onLeave: () => void }) {
   return (
     <div className={`game${touch ? ' touch' : ''}`}>
       <div ref={hostRef} className="game-host" />
-      {net.status === 'reconnecting' && (
+      {(net.status === 'reconnecting' || net.drop) && (
         <div className="conn-banner" role="alert">
           Connection lost — reconnecting…
+          {net.drop ? ` (code ${net.drop.code}, drop #${net.drop.count})` : ''}
         </div>
       )}
       {phase.kind === 'loading' && (

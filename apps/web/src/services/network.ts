@@ -25,6 +25,7 @@ import type {
   NetShot,
   RoundInfo,
 } from '@zhb/game-engine';
+import { reportError } from './errorReporter.ts';
 import { SERVER_HTTP_URL } from './serverStatus.ts';
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting';
@@ -37,6 +38,9 @@ export interface NetworkState {
   mySessionId: string | null;
   /** Last rule rejection from the server (e.g. "Teams must have the same number of players"). */
   notice: LobbyError | null;
+  /** Set while the connection is down and being re-established; `count` = drops so far. */
+  drop: { code: number; count: number } | null;
+  dropCount: number;
 }
 
 const IDLE: NetworkState = {
@@ -44,6 +48,8 @@ const IDLE: NetworkState = {
   error: null,
   lobby: null,
   mySessionId: null,
+  drop: null,
+  dropCount: 0,
   notice: null,
 };
 const STORAGE_KEY = 'zhb.session';
@@ -328,6 +334,14 @@ class Network {
       const parsed = lobbyErrorSchema.safeParse(raw);
       if (parsed.success) this.set({ notice: parsed.data });
     });
+    // The library re-opens a dropped socket by itself; surface that so a stall is never silent,
+    // and report the close code so the cause can be found (proxy, ping timeout, Wi-Fi...).
+    room.onDrop((code: number, reason?: string) => {
+      const count = this.state.dropCount + 1;
+      this.set({ drop: { code, count }, dropCount: count });
+      reportError('error', new Error(`ws-drop code=${code} reason=${reason ?? ''} n=${count}`));
+    });
+    room.onReconnect(() => this.set({ drop: null }));
     room.onLeave((code: number) => {
       if (this.room !== room || this.leaving) return;
       this.room = null;
